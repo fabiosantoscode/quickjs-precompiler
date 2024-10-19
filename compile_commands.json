@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "/home/fabio/devel/quickjs-precompiler",
+    "arguments": ["gcc", "-Ivendor/quickjs", "fabio-test.c"],
+    "file": "file.cc"
+  }
+]

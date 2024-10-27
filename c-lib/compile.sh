@@ -1,9 +1,16 @@
 set -euo pipefail
 
+# compilation script for C runtimes for precompiled quickjs files
+# Usage: 
+# 
+# Preconditions:
 # first, compile quickjs.o:
 # cd vendor/quickjs # (git submodule)
 # make
 # make quickjs.o
+# Future:
+# This build system Works On My Machine, but this sucks.
+# However, I have no idea how to improve this situation
 
 QUICKJS=`pwd`/vendor/quickjs
 C_LIB=`pwd`/c-lib
@@ -39,11 +46,9 @@ pushd build
 
 gcc $GCC_FLAGS \
     -I "${QUICKJS}" \
-    -O1 \
+    -O2 \
     ${QUICKJS_BUILD}/*.o \
-    "${C_LIB}"/fabio-test.c
+    -o "$1" \
+    -x c - # read C from stdin
 
 popd
-
-echo '-- running a.out --'
-"${BUILD}"/a.out

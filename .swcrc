@@ -1,0 +1,14 @@
+{
+  "jsc": {
+    "baseUrl": "src",
+    "parser": {
+      "syntax": "typescript"
+    },
+    "target": "es2021"
+  },
+  "$schema": "https://swc.rs/schema.json",
+  "module": {
+    "type": "es6"
+  },
+  "sourceMaps": true
+}

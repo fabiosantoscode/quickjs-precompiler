@@ -4,33 +4,46 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { rimraf } from "rimraf";
 
-export type Bytecode = { cSource: string; bytecodeName: string; bytecodeSize: string; }
+export type Bytecode = {
+  cSource: string;
+  bytecodeName: string;
+  bytecodeSize: string;
+};
 
-export async function jsToBytecode(inputJs: string, bytecodeName = 'GENERATED_BYTECODE'): Promise<Bytecode> {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'quickjs-precompiler-to-bytecode'));
-    const file = join(tmpDir, 'input.js')
-    const file_c = join(tmpDir, 'output.c')
+export async function jsToBytecode(
+  inputJs: string,
+  bytecodeName = "GENERATED_BYTECODE"
+): Promise<Bytecode> {
+  const tmpDir = await mkdtemp(
+    join(tmpdir(), "quickjs-precompiler-to-bytecode")
+  );
+  const file = join(tmpDir, "input.js");
+  const file_c = join(tmpDir, "output.c");
 
-    try {
-        await writeFile(file, inputJs, )
-        await simpleSpawn(
-            './vendor/quickjs/qjsc',
-            [ '-c', '-N', bytecodeName, '-o', file_c, file]
-        );
+  try {
+    await writeFile(file, inputJs);
+    await simpleSpawn("./vendor/quickjs/qjsc", [
+      "-c",
+      "-N",
+      bytecodeName,
+      "-o",
+      file_c,
+      file,
+    ]);
 
-        const cSource = await readFile(file_c, 'utf-8');
-        return { cSource, bytecodeName, bytecodeSize: bytecodeName + '_size' }
-    } finally {
-        await rimraf(tmpDir)
-    }
+    const cSource = await readFile(file_c, "utf-8");
+    return { cSource, bytecodeName, bytecodeSize: bytecodeName + "_size" };
+  } finally {
+    await rimraf(tmpDir);
+  }
 }
 
 export function generateRuntimeForBytecode({
-    bytecode,
+  bytecode,
 }: {
-    bytecode: Bytecode
+  bytecode: Bytecode;
 }): string {
-    return String.raw`#include "string.h"
+  return String.raw`#include "string.h"
         #include "unistd.h"
         #include "stdio.h"
         #include "quickjs-libc.h"
@@ -57,5 +70,5 @@ export function generateRuntimeForBytecode({
 
             return 0;
         }
-    `
+    `;
 }

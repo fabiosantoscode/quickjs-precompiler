@@ -1,4 +1,5 @@
 {
+  "$schema": "https://swc.rs/schema.json",
   "jsc": {
     "baseUrl": "src",
     "parser": {
@@ -6,7 +7,6 @@
     },
     "target": "es2021"
   },
-  "$schema": "https://swc.rs/schema.json",
   "module": {
     "type": "es6"
   },

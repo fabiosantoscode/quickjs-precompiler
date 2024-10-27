@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "skipLibCheck": true,
     "sourceMap": true,
     "target": "ESNext",
     "module": "ESNext",
@@ -8,7 +9,8 @@
     "esModuleInterop": true,
     "moduleResolution": "Node",
     "incremental": true,
-    "baseUrl": "src"
+    "baseUrl": "src",
+    "tsBuildInfoFile": "node_modules/.cache/tsbuildinfo"
   },
   "ts-node": {
     "swc": true

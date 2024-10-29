@@ -1,12 +1,15 @@
 import {
   AnyNode,
   Program,
-  Function,
   Pattern,
-  Super,
   Identifier,
   Expression,
-} from "./augmented-ast.js";
+  Function,
+  FunctionExpression,
+  ArrowFunctionExpression,
+  FunctionDeclaration,
+  AnonymousFunctionDeclaration,
+} from "./augmented-ast";
 import invariant from "tiny-invariant";
 
 export const unknownAbort = new Error("not an error. aborting due to unknown");
@@ -50,6 +53,20 @@ export function* astNaiveChildren(ast: AnyNode | Function): Generator<AnyNode> {
       }
     }
   }
+}
+
+export function isFunction(
+  item: AnyNode
+): item is
+  | FunctionDeclaration
+  | AnonymousFunctionDeclaration
+  | FunctionExpression
+  | ArrowFunctionExpression {
+  return (
+    item.type === "FunctionDeclaration" ||
+    item.type === "FunctionExpression" ||
+    item.type === "ArrowFunctionExpression"
+  );
 }
 
 export function astPatternAssignedBindings(

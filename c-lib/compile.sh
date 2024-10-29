@@ -12,10 +12,12 @@ set -euo pipefail
 # This build system Works On My Machine, but this sucks.
 # However, I have no idea how to improve this situation
 
-QUICKJS=`pwd`/vendor/quickjs
-C_LIB=`pwd`/c-lib
-BUILD=`pwd`/build
-QUICKJS_BUILD=`pwd`/build/quickjs.obj
+cd "$(dirname $0)"
+
+C_LIB=`pwd`
+QUICKJS=`pwd`/../vendor/quickjs
+BUILD=`pwd`/../build
+QUICKJS_BUILD=`pwd`/../build/quickjs.obj
 
 QUICKJS_C_FILES="
 ${QUICKJS}/cutils.c

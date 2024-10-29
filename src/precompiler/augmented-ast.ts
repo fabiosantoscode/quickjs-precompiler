@@ -1,6 +1,26 @@
 // Copied from acorn's type defs
 // Search for "// AUGMENTED" to find changes
 
+// AUGMENTED: closure info
+export interface TrackedBinding {
+  name: string;
+  uniqueName: string;
+  assignments: number;
+  references: number;
+  closure: TrackedClosure;
+}
+
+// AUGMENTED: closure info
+export interface TrackedClosure {
+  id: number;
+  name?: string;
+  kind: "var" | "let";
+  node: Program | Function;
+  children: TrackedClosure[];
+  parent?: TrackedClosure;
+  variables: Map<string, TrackedBinding>;
+}
+
 export interface Node {
   start: number;
   end: number;
@@ -43,6 +63,9 @@ export interface Program extends Node {
   type: "Program";
   body: Array<Statement | ModuleDeclaration>;
   sourceType: "script" | "module";
+  closureInfo: TrackedClosure; // AUGMENTED
+  allClosures: TrackedClosure[]; // AUGMENTED
+  allBindings: Map<string, TrackedBinding>; // AUGMENTED
 }
 
 export interface Function extends Node {
@@ -52,6 +75,7 @@ export interface Function extends Node {
   generator: boolean;
   expression: boolean;
   async: boolean;
+  closureInfo: TrackedClosure; // AUGMENTED
 }
 
 export interface ExpressionStatement extends Node {

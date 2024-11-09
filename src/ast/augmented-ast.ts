@@ -658,6 +658,12 @@ export type ExpressionOrStatement =
   | Expression
   | Statement;
 
+// AUGMENTED
+export type StatementOrDeclaration =
+  | Declaration
+  | ModuleDeclaration
+  | Statement;
+
 export type AnyNode =
   | Statement
   | Expression
@@ -704,7 +710,7 @@ export type AnyNode2 =
   | Pattern;
 
 // AUGMENTED: we should be able to know what is an expression
-const expressionTypes = [
+const expressionTypes = new Set<Expression["type"]>([
   "Identifier",
   "Literal",
   "ThisExpression",
@@ -730,6 +736,35 @@ const expressionTypes = [
   "AwaitExpression",
   "ChainExpression",
   "ImportExpression",
-];
+]);
 export const isExpression = (node: AnyNode): node is Expression =>
-  expressionTypes.includes(node.type);
+  expressionTypes.has(node.type as Expression["type"]);
+
+export const statementTypes = new Set<StatementOrDeclaration["type"]>([
+  "ExpressionStatement",
+  "BlockStatement",
+  "EmptyStatement",
+  "DebuggerStatement",
+  "WithStatement",
+  "ReturnStatement",
+  "LabeledStatement",
+  "BreakStatement",
+  "ContinueStatement",
+  "IfStatement",
+  "SwitchStatement",
+  "ThrowStatement",
+  "TryStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "ForStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "VariableDeclaration",
+  "ClassDeclaration",
+  "ImportDeclaration",
+  "ExportNamedDeclaration",
+  "ExportDefaultDeclaration",
+  "ExportAllDeclaration",
+]);
+export const isStatement = (node: AnyNode): node is StatementOrDeclaration =>
+  statementTypes.has(node.type as StatementOrDeclaration["type"]);

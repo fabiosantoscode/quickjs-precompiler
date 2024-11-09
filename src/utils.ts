@@ -55,10 +55,10 @@ export function defined<T>(maybeUndef: T | undefined | null): T {
   return maybeUndef;
 }
 
-export function ofType<T extends { type: TypeStr }, TypeStr extends string>(
-  maybeUndef: T | { [x: string]: any } | undefined | null,
+export function ofType<T extends { type: string }, TypeStr extends string>(
+  maybeUndef: T | { [k: string]: any } | undefined | null,
   type: TypeStr
-): T {
+): Extract<T, { type: TypeStr }> {
   if (maybeUndef === null || maybeUndef === undefined) {
     const e = new Error("Expected defined value, got " + maybeUndef);
     Error.captureStackTrace(e, ofType);
@@ -69,7 +69,7 @@ export function ofType<T extends { type: TypeStr }, TypeStr extends string>(
     Error.captureStackTrace(e, ofType);
     throw e;
   }
-  return maybeUndef as T;
+  return maybeUndef as Extract<T, { type: TypeStr }>;
 }
 
 export function invariant(

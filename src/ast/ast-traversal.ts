@@ -677,6 +677,24 @@ export function isFunction(item: AnyNode): item is Function {
   );
 }
 
+export function astFindFunctions(root: AnyNode, deep = false) {
+  const functions: Function[] = [];
+
+  (function recurse(node) {
+    if (isFunction(node) && node !== root) {
+      functions.push(node);
+
+      if (!deep) return;
+    }
+
+    for (const child of astNaiveChildren(node)) {
+      recurse(child);
+    }
+  })(root);
+
+  return functions;
+}
+
 export function astPatternAssignedBindings(
   pattern: Pattern | Pattern[],
   items = [] as Identifier[]

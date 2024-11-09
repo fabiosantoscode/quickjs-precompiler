@@ -1,6 +1,6 @@
 import * as acorn from "acorn";
 import * as astring from "astring";
-import type { Program } from "./ast/augmented-ast";
+import type { Function, Program } from "./ast/augmented-ast";
 import { normalizeAll } from "./ast/normalize/all";
 
 export interface Options {
@@ -24,6 +24,6 @@ export function parseJsFile(
   return program;
 }
 
-export function stringifyJsFile(source: Program) {
+export function stringifyJsFile(source: Program | Function) {
   return astring.generate(source).trimEnd();
 }

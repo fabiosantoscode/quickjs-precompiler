@@ -1,4 +1,4 @@
-import { defined, invariant } from "../utils";
+import { defined, invariant } from "../../utils";
 import {
   astNaiveChildren,
   astNaiveTraversal,
@@ -6,7 +6,7 @@ import {
   astPatternGetExpressions,
   astTopLevelChildren,
   isFunction,
-} from "./ast-traversal";
+} from "../ast-traversal";
 import {
   AnyNode,
   Identifier,
@@ -15,10 +15,10 @@ import {
   Function,
   TrackedClosure,
   TrackedBinding,
-} from "./augmented-ast";
-import { LocatedErrors } from "./located-errors";
-import { Ctx } from "../context";
-import { maparrayPush } from "../utils";
+} from "../augmented-ast";
+import { LocatedErrors } from "../located-errors";
+import { Ctx } from "../../context";
+import { maparrayPush } from "../../utils";
 
 /** Turn identifiers' names into unique IDs and place them in .uniqueName
  * Also record closures and collect TrackedBindings */
@@ -411,7 +411,13 @@ class UniqueifyVisitor extends LocatedErrors {
       id.uniqueName = id.name + "@global";
 
       if (!this.globalScope.variables.has(id.uniqueName)) {
-        this.addVariable(id.name, id.uniqueName, "const", false, this.globalScope);
+        this.addVariable(
+          id.name,
+          id.uniqueName,
+          "const",
+          false,
+          this.globalScope
+        );
       }
 
       return;

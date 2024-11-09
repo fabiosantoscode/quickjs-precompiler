@@ -59,7 +59,7 @@ export function propagateTypes(env: TypeEnvironment, program: Program) {
   pass4MarkFunctionArgsAndRet(env, program);
 
   /** Pass 5: pump dependencies */
-  pass5PumpDependencies(env, program)
+  pass5PumpDependencies(env, program);
 }
 
 function pass0AssignTypeVariables(env: TypeEnvironment, program: Program) {
@@ -259,24 +259,24 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
 }
 
 function pass2MarkAssignments(env: TypeEnvironment, program: Program) {
-  const namesToDependencies = new Map<string, TypeDependencyBindingAssignments>()
-  program.allBindings.forEach(bind => {
+  const namesToDependencies = new Map<
+    string,
+    TypeDependencyBindingAssignments
+  >();
+  program.allBindings.forEach((bind) => {
     if (bind.explicitlyDefined) {
       const tDep = new TypeDependencyBindingAssignments(
         `variable ${bind.uniqueName} depends on ${bind.assignments} assignments`,
         defined(env.bindingVars.get(bind.uniqueName)),
         bind.assignments,
         []
-      )
+      );
 
-      namesToDependencies.set(
-        bind.uniqueName,
-        tDep
-      )
+      namesToDependencies.set(bind.uniqueName, tDep);
 
-      env.addTypeDependency(tDep)
+      env.addTypeDependency(tDep);
     }
-  })
+  });
 
   for (const node of astNaiveTraversal(program)) {
     type AssignmentLike = {
@@ -331,9 +331,9 @@ function pass2MarkAssignments(env: TypeEnvironment, program: Program) {
         env.typeVars.set(left, possibility);
       } else {
        */
-      const tDep = namesToDependencies.get(left.uniqueName)
+      const tDep = namesToDependencies.get(left.uniqueName);
       if (tDep) {
-        tDep.possibilities.push(possibility)
+        tDep.possibilities.push(possibility);
       }
     }
   }
@@ -356,7 +356,9 @@ function pass3MarkDependentTypes(env: TypeEnvironment, program: Program) {
           return tVar;
         });
         //addDependentType(env, { dependencies, target, comment, typeBack });
-        env.addTypeDependency(new TypeDependencyTypeBack(comment, target, dependencies, typeBack))
+        env.addTypeDependency(
+          new TypeDependencyTypeBack(comment, target, dependencies, typeBack)
+        );
       };
 
       switch (node.type) {
@@ -590,18 +592,18 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
       // TODO addVarDependentTypes already supports multiple possibilities. Maybe we don't have to do as much here?
 
       // params already have a type dependency here
-      
-      const dep = env.getTypeDependency(defined(env.bindingVars.get(argName)))
-      invariant(dep instanceof TypeDependencyBindingAssignments)
 
-      dep.targetPossibilityCount += passedArgs.length
-      dep.possibilities.push(...passedArgs)
+      const dep = env.getTypeDependency(defined(env.bindingVars.get(argName)));
+      invariant(dep instanceof TypeDependencyBindingAssignments);
+
+      dep.targetPossibilityCount += passedArgs.length;
+      dep.possibilities.push(...passedArgs);
 
       // HACK: when the var-tracking code creates our
       // TypeDependencyBindingAssignments, it trusts BindingTracker's "assignments",
       // which counts the parameter itself. To fix this, we decrement.
       // If we couldn't get to this line, it would simply never resolve which is great, since we wouldn't know everything this argument could be.
-      dep.targetPossibilityCount--
+      dep.targetPossibilityCount--;
     }
 
     // RET TYPE
@@ -620,41 +622,53 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
     });
 
     const tVarRet = (tVarFunc.type as FunctionType).returns;
-    env.addTypeDependency(new TypeDependencyReturnType("the function's return value depends on the tVars of return statements", tVarRet, exitTVars))
+    env.addTypeDependency(
+      new TypeDependencyReturnType(
+        "the function's return value depends on the tVars of return statements",
+        tVarRet,
+        exitTVars
+      )
+    );
 
     // MAPPING THE RET TYPE TO THE CALLS
     for (const call of callExprNodes) {
-      env.addTypeDependency(new TypeDependencyCopyReturnToCall('copy the function ret into the callsite', defined(env.typeVars.get(call)), tVarRet))
+      env.addTypeDependency(
+        new TypeDependencyCopyReturnToCall(
+          "copy the function ret into the callsite",
+          defined(env.typeVars.get(call)),
+          tVarRet
+        )
+      );
     }
   }
 }
 
 function pass5PumpDependencies(env: TypeEnvironment, _program: Program) {
-  const allDeps = env.getAllTypeDependencies()
+  const allDeps = env.getAllTypeDependencies();
 
   for (let pass = 0; pass < 2000000; pass++) {
-    let anyProgress = false
+    let anyProgress = false;
 
     for (const dep of allDeps) {
-      const [done, type] = dep.pump()
+      const [done, type] = dep.pump();
       if (done) {
-        allDeps.delete(dep)
-        anyProgress = true
+        allDeps.delete(dep);
+        anyProgress = true;
       }
 
       if (type) {
         if (!dep.target.type) {
-          dep.target.type = type
+          dep.target.type = type;
         } else if (dep.target.type.extends(type)) {
-          dep.target.type = type
+          dep.target.type = type;
         } else {
-          invariant(false, 'TODO: should never occur?')
+          invariant(false, "TODO: should never occur?");
         }
       }
     }
 
-    if (!anyProgress) return
+    if (!anyProgress) return;
   }
 
-  console.warn('Giving up after 2000000 iterations.')
+  console.warn("Giving up after 2000000 iterations.");
 }

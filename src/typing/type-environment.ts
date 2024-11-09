@@ -19,19 +19,22 @@ export class TypeEnvironment {
     })
   );
 
-  #typeDependencies = new Map<TypeVariable, TypeDependency>()
+  #typeDependencies = new Map<TypeVariable, TypeDependency>();
 
   addTypeDependency(dependency: TypeDependency) {
-    invariant(!this.#typeDependencies.has(dependency.target), 'dependency already exists')
+    invariant(
+      !this.#typeDependencies.has(dependency.target),
+      "dependency already exists"
+    );
 
-    this.#typeDependencies.set(dependency.target, dependency)
+    this.#typeDependencies.set(dependency.target, dependency);
   }
 
   getTypeDependency(key: TypeVariable) {
-    return this.#typeDependencies.get(key)
+    return this.#typeDependencies.get(key);
   }
 
   getAllTypeDependencies() {
-    return new Set(this.#typeDependencies.values())
+    return new Set(this.#typeDependencies.values());
   }
 }

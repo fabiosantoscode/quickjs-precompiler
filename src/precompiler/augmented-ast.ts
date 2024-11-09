@@ -6,7 +6,7 @@ export interface TrackedBinding {
   name: string;
   kind: "var" | "let" | "const";
   /** False when it's a global */
-  explicitlyDefined: boolean
+  explicitlyDefined: boolean;
   uniqueName: string;
   assignments: number;
   references: number;

@@ -11,17 +11,18 @@ it("finds and replaces duplicate identifiers", () => {
   expect(testUniqueNames(`let x = 1`)).toMatchInlineSnapshot(`"let x@1 = 1;"`);
 
   expect(testUniqueNames(`let x = 1; { let x = 2 }`)).toMatchInlineSnapshot(`
-        "let x@1 = 1;
-        {
-          let x@2 = 2;
-        }"
-        `);
+    "let x@1 = 1;
+    {
+      let x@2 = 2;
+    }"
+  `);
 });
 
 it("unless they are in the same scope", () => {
-  expect(testUniqueNames(`let x = 1, y = x + 1`)).toMatchInlineSnapshot(
-    `"let x@1 = 1, y@1 = x@1 + 1;"`
-  );
+  expect(testUniqueNames(`let x = 1, y = x + 2`)).toMatchInlineSnapshot(`
+    "let x@1 = 1;
+    let y@1 = x@1 + 2;"
+  `);
 });
 
 it("supports var scope", () => {
@@ -35,16 +36,6 @@ it("supports var scope", () => {
       let x@2 = 2;
     }"
   `);
-});
-
-it("supports weird hoisted functions", () => {
-  expect(testUniqueNames(`function x() { inLet; } let inLet;`))
-    .toMatchInlineSnapshot(`
-        "function x@1() {
-          inLet@1;
-        }
-        let inLet@1;"
-    `);
 });
 
 it("supports labels scope", () => {
@@ -110,7 +101,7 @@ it("takes note of all closures", () => {
     [
       "root (vars: foo@1, bar@1)",
       "root.foo (vars: )",
-      "root.bar (vars: foo@2)",
+      "root.bar (vars: foo@3)",
       "root.bar.foo (vars: )",
     ]
   `);

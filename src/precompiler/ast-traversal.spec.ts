@@ -48,13 +48,15 @@ it("traverses all items in an AST", () => {
   `);
 
   expect(testTraversal(x, goIntoAll, goThroughAll)).toMatchInlineSnapshot(`
-    "FunctionDeclaration
+    "VariableDeclaration
     - Identifier
-    - Identifier
-    - BlockStatement
-    - - ExpressionStatement
-    - - - CallExpression
-    - - - - Identifier
+    - FunctionExpression
+    - - Identifier
+    - - Identifier
+    - - BlockStatement
+    - - - ExpressionStatement
+    - - - - CallExpression
+    - - - - - Identifier
     LabeledStatement
     - VariableDeclaration
     - - Identifier
@@ -73,11 +75,12 @@ it("traverses all items except patterns", () => {
 
   expect(testTraversal(x, { ...goIntoAll, patterns: false }, goThroughAll))
     .toMatchInlineSnapshot(`
-    "FunctionDeclaration
-    - BlockStatement
-    - - ExpressionStatement
-    - - - CallExpression
-    - - - - Identifier
+    "VariableDeclaration
+    - FunctionExpression
+    - - BlockStatement
+    - - - ExpressionStatement
+    - - - - CallExpression
+    - - - - - Identifier
     LabeledStatement
     - VariableDeclaration
     - - Literal"
@@ -95,7 +98,8 @@ it("can avoid references", () => {
 
   expect(testTraversal(x, { ...goIntoAll, expressions: false }, goThroughAll))
     .toMatchInlineSnapshot(`
-    "FunctionDeclaration
+    "VariableDeclaration
+    - Identifier
     - Identifier
     - Identifier
     - BlockStatement

@@ -1,7 +1,12 @@
 import * as acorn from "acorn";
 import * as astring from "astring";
 import type { Program } from "./precompiler/augmented-ast";
-import { uniqueifyNames } from "precompiler/identify-scope";
+import { uniqueifyNames } from "./precompiler/identify-scope";
+import { normalizeArrowFunctions } from "./precompiler/normalize/arrows";
+import { normalizeMarkReferences } from "./precompiler/normalize/mark-references";
+import { normalizeVariableDeclarations } from "./precompiler/normalize/variable-declarations";
+import { normalizeHoistedFunctions } from "./precompiler/normalize/normalize-hoisted-functions";
+import { BindingTracker } from "./precompiler/normalize/binding-tracker";
 
 export interface Options {
   sourceFile?: string;
@@ -19,7 +24,14 @@ export function parseJsFile(
     locations: true,
   }) as Program;
 
+  normalizeArrowFunctions(program);
+  normalizeMarkReferences(program);
+  normalizeVariableDeclarations(program);
+  normalizeHoistedFunctions(program);
+
   uniqueifyNames(program);
+
+  new BindingTracker(program).visit(program);
 
   return program;
 }

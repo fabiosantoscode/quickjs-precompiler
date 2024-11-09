@@ -1,37 +1,43 @@
-import invariant from "tiny-invariant";
+import { invariant } from "../../utils";
 import {
   astNaiveChildren,
   astPatternAssignedBindings,
   astPatternGetExpressions,
-} from "./ast-traversal";
+} from "../ast-traversal";
 import {
   AnyNode,
   ExpressionOrStatement,
-  FunctionDeclaration,
+  FunctionExpression,
   Identifier,
   Pattern,
   Program,
-} from "./augmented-ast";
-import { LocatedErrors } from "./located-errors";
+  TrackedBinding,
+} from "../augmented-ast";
+import { LocatedErrors } from "../located-errors";
+import { defined } from "../../utils";
 
 export class BindingTracker extends LocatedErrors {
   constructor(public root: Program) {
-    super()
+    super();
   }
 
-  binding(name: string) {
-    invariant(name);
+  binding(name: string): TrackedBinding {
+    defined(name);
 
-    let binding = this.root.allBindings.get(name);
-    invariant(binding)
+    let binding = defined(this.root.allBindings.get(name));
 
     return binding;
   }
 
-  countRef(node?: Identifier | null) {
-    if (node == null) {
-      return;
-    } else if (node.type === "Identifier") {
+  countBasicCallee(node: Identifier) {
+    this.invariantAt(node, node.isReference === "reference");
+    const binding = this.binding(node.uniqueName);
+    if (!binding.callReferences) binding.callReferences = 1;
+    else binding.callReferences++;
+  }
+
+  countRef(node: Identifier) {
+    if (node.type === "Identifier") {
       this.binding(node.uniqueName).references++;
     } else {
       this.borkAt(
@@ -42,9 +48,9 @@ export class BindingTracker extends LocatedErrors {
   }
 
   countPat(node?: Pattern | null) {
-    if (node == null) {
-      return;
-    } else if (node.type === "Identifier") {
+    if (node == null) return;
+
+    if (node.type === "Identifier") {
       this.binding(node.uniqueName).assignments++;
     } else {
       for (const assignee of astPatternAssignedBindings(node)) {
@@ -57,17 +63,20 @@ export class BindingTracker extends LocatedErrors {
     }
   }
 
-  visit(node?: AnyNode | null) {
+  visit(node?: AnyNode | null, comprises = new Set<string>()) {
     if (node == null) return;
 
     switch (node.type) {
       case "Identifier": {
+        // the rest of the code should ensure no non-reference identifiers get here
+        invariant(node.isReference === "reference");
         this.countRef(node);
         return;
       }
       case "AssignmentExpression": {
         this.countPat(node.left);
         this.visit(node.right);
+
         return;
       }
       // Basic Structures
@@ -129,9 +138,8 @@ export class BindingTracker extends LocatedErrors {
         return;
       }
       case "FunctionExpression":
-      case "FunctionDeclaration":
       case "ArrowFunctionExpression": {
-        this.countPat((node as FunctionDeclaration).id);
+        this.countPat((node as FunctionExpression).id);
 
         for (const param of node.params) {
           this.countPat(param);
@@ -180,6 +188,13 @@ export class BindingTracker extends LocatedErrors {
       }
       case "NewExpression":
       case "CallExpression": {
+        if (
+          node.callee.type === "Identifier" &&
+          node.type === "CallExpression"
+        ) {
+          this.countBasicCallee(node.callee);
+        }
+
         if (node.callee.type !== "Super") {
           this.visit(node.callee);
         }
@@ -222,7 +237,6 @@ export class BindingTracker extends LocatedErrors {
       // Pass-through
       case "ChainExpression":
       case "ImportExpression":
-      case "ParenthesizedExpression":
       case "ExpressionStatement":
       case "BlockStatement":
       case "WithStatement":

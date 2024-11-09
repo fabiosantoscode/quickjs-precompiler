@@ -193,11 +193,13 @@ export interface ForInStatement extends Node {
   body: Statement;
 }
 
+/* AUGMENTED: these are turned into let
 export interface FunctionDeclaration extends Function {
   type: "FunctionDeclaration";
   id: Identifier;
   body: BlockStatement;
 }
+*/
 
 export interface VariableDeclaration extends Node {
   type: "VariableDeclaration";
@@ -514,11 +516,13 @@ export interface ExportSpecifier extends Node {
   local: Identifier | Literal;
 }
 
+/* AUGMENTED: removed 
 export interface AnonymousFunctionDeclaration extends Function {
   type: "FunctionDeclaration";
   id: null;
   body: BlockStatement;
 }
+*/
 
 export interface AnonymousClassDeclaration extends Class {
   type: "ClassDeclaration";
@@ -527,12 +531,9 @@ export interface AnonymousClassDeclaration extends Class {
 
 export interface ExportDefaultDeclaration extends Node {
   type: "ExportDefaultDeclaration";
-  declaration:
-    | AnonymousFunctionDeclaration
-    | FunctionDeclaration
-    | AnonymousClassDeclaration
-    | ClassDeclaration
-    | Expression;
+  declaration: // AUGMENTED: removed | AnonymousFunctionDeclaration
+  // AUGMENTED: removed | FunctionDeclaration
+  AnonymousClassDeclaration | ClassDeclaration | Expression;
 }
 
 export interface ExportAllDeclaration extends Node {
@@ -602,9 +603,8 @@ export type Statement =
   | Declaration;
 
 export type Declaration =
-  | FunctionDeclaration
-  | VariableDeclaration
-  | ClassDeclaration;
+  // AUGMENTED: removed | FunctionDeclaration
+  VariableDeclaration | ClassDeclaration;
 
 export type Expression =
   | Identifier
@@ -680,7 +680,7 @@ export type AnyNode =
   | ImportDefaultSpecifier
   | ImportNamespaceSpecifier
   | ExportSpecifier
-  | AnonymousFunctionDeclaration
+  // AUGMENTED: removed | AnonymousFunctionDeclaration
   | AnonymousClassDeclaration
   | PropertyDefinition
   | PrivateIdentifier
@@ -690,8 +690,8 @@ export type AnyNode =
 // AUGMENTED: nodes we care about here
 export type AnyNode2 =
   | Program
-  | FunctionDeclaration
-  | AnonymousFunctionDeclaration
+  // AUGMENTED: removed | FunctionDeclaration
+  // AUGMENTED: removed | AnonymousFunctionDeclaration
   | FunctionExpression
   | ArrowFunctionExpression
   | Statement

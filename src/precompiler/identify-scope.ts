@@ -1,10 +1,11 @@
-import invariant from "tiny-invariant";
+import { invariant } from "../utils";
 import {
   astNaiveChildren,
   astNaiveTraversal,
   astPatternAssignedBindings,
   astPatternGetExpressions,
   astTopLevelChildren,
+  isFunction,
 } from "./ast-traversal";
 import {
   AnyNode,
@@ -16,8 +17,11 @@ import {
   TrackedBinding,
 } from "./augmented-ast";
 import { LocatedErrors } from "./located-errors";
+import { Ctx } from "../context";
+import { maparrayPush } from "../utils";
 
-/** Turn identifiers' names into unique IDs and place them in .uniqueName */
+/** Turn identifiers' names into unique IDs and place them in .uniqueName
+ * Also record closures and collect TrackedBindings */
 class UniqueifyVisitor extends LocatedErrors {
   allNames = new Map<string, number>();
   scopes = [
@@ -33,7 +37,7 @@ class UniqueifyVisitor extends LocatedErrors {
   labels = new Map<string, string>();
   globalScope = this.scopes[0];
 
-  constructor(public root: Program) {
+  constructor(public ctx: Ctx, public root: Program) {
     super();
 
     Object.defineProperty(root, "allBindings", {
@@ -114,25 +118,28 @@ class UniqueifyVisitor extends LocatedErrors {
     }
   }
 
-  addVariable(name: string, uniqueName: string) {
+  addVariable(name: string, uniqueName: string, kind: TrackedBinding["kind"]) {
     const scope = this.scopes[this.scopes.length - 1];
 
-    const binding = {
+    const binding: TrackedBinding = {
       name,
       uniqueName,
+      kind,
       assignments: 0,
       references: 0,
+      possibleMutations: 0,
       closure: this.currentClosure,
     };
     scope.variables.set(name, binding);
     this.currentClosure.variables.set(uniqueName, binding);
-    this.root.allBindings.set(uniqueName, binding)
+    this.root.allBindings.set(uniqueName, binding);
   }
 
   visitNode(node: AnyNode) {
     switch (node.type) {
       case "Identifier": {
-        invariant(
+        this.invariantAt(
+          node,
           !node.uniqueName,
           "must be the first time we see this ident/label"
         );
@@ -200,30 +207,15 @@ class UniqueifyVisitor extends LocatedErrors {
         return;
       }
       // Functions
-      case "FunctionDeclaration":
       case "ArrowFunctionExpression":
       case "FunctionExpression": {
-        // let-scoped id for the outside
+        // function's own name, should be constant
         let functionName;
-
-        if (node.type === "FunctionDeclaration" && node.id) {
-          const binding = this.scopes[this.scopes.length - 1].variables.get(
-            node.id.name
-          );
-          invariant(binding, "uniqueName must be precomputed in prepareLet");
-          invariant(!node.id.uniqueName);
-          node.id.uniqueName = binding.uniqueName;
-          functionName = binding;
-        }
 
         const variables = new Map();
         const preventReassign = new Set();
 
-        if (
-          (node.type === "FunctionExpression" ||
-            node.type === "FunctionDeclaration") &&
-          node.id
-        ) {
+        if (node.type === "FunctionExpression" && node.id) {
           // Name for this function, used inside
           if (!functionName) {
             functionName = this.uniqueifyNameString(node.id.name);
@@ -233,14 +225,6 @@ class UniqueifyVisitor extends LocatedErrors {
 
         if (functionName) {
           preventReassign.add(functionName);
-        }
-
-        if (node.type === "FunctionDeclaration") {
-          for (const param of node.params) {
-            invariant("untested: function params");
-          }
-        } else {
-          invariant("untested: function exprs");
         }
 
         try {
@@ -267,6 +251,10 @@ class UniqueifyVisitor extends LocatedErrors {
 
           this.prepareVarScoped(node as Function);
 
+          for (const param of node.params) {
+            this.uniqueifyDeclaration(param, "var");
+          }
+
           this.visitNodes((node as Function).body);
         } finally {
           this.finishScope(node);
@@ -274,6 +262,7 @@ class UniqueifyVisitor extends LocatedErrors {
           this.currentClosure = this.currentClosure.parent;
           invariant(this.scopes.pop());
         }
+
         return;
       }
       case "AssignmentExpression": {
@@ -288,17 +277,26 @@ class UniqueifyVisitor extends LocatedErrors {
           let scope = this.scopes.findLast((scop) =>
             scop.variables.has(assignee.name)
           );
+
           if (scope?.preventReassign.has(assignee.name)) {
             this.borkAt(
               assignee,
-              "Cannot reassign (is this the name of a FunctionDeclaration?)"
+              "Cannot reassign (is this the name of a FunctionDeclaration or const?)"
             );
           }
         }
         this.visitNodes(astNaiveChildren(node));
         return;
       }
+      case "MemberExpression": {
+        this.visitNode(node.object);
+        if (node.computed) {
+          this.visitNode(node.property);
+        }
+        return;
+      }
       // Pass-through nodes
+      case "ArrayExpression":
       case "ArrayPattern":
       case "ObjectPattern":
       case "AssignmentPattern":
@@ -333,18 +331,10 @@ class UniqueifyVisitor extends LocatedErrors {
 
     invariant(scope.type === "var");
 
-    function push(ident: Identifier) {
-      if (!found.has(ident.name)) {
-        found.set(ident.name, [ident]);
-      } else {
-        found.get(ident.name)?.push(ident);
-      }
-    }
-
     if ("params" in (node as Function)) {
       for (const param of (node as Function).params) {
         for (const paramIdent of astPatternAssignedBindings(param)) {
-          push(paramIdent);
+          maparrayPush(found, paramIdent.name, paramIdent);
         }
       }
     }
@@ -357,15 +347,11 @@ class UniqueifyVisitor extends LocatedErrors {
             "destructuring not supported"
           );
 
-          push(declarator.id);
+          maparrayPush(found, declarator.id.name, declarator.id);
         }
       }
 
-      if (
-        node.type === "FunctionDeclaration" ||
-        node.type === "FunctionExpression" ||
-        node.type === "ArrowFunctionExpression"
-      ) {
+      if (isFunction(node)) {
         return; // don't go into nested children
       }
 
@@ -380,7 +366,7 @@ class UniqueifyVisitor extends LocatedErrors {
 
     for (const [name, users] of found.entries()) {
       const uniqueName = this.uniqueifyNameString(name);
-      this.addVariable(name, uniqueName);
+      this.addVariable(name, uniqueName, "var");
     }
   }
 
@@ -392,20 +378,15 @@ class UniqueifyVisitor extends LocatedErrors {
         node.type === "VariableDeclaration" &&
         (node.kind === "let" || node.kind === "const")
       ) {
-        for (const decl of node.declarations) {
-          invariant(decl.id.type === "Identifier");
+        const decl = node.declarations[0];
+        invariant(decl.id.type === "Identifier");
 
-          const uniqueName = this.uniqueifyNameString(decl.id.name);
-          this.addVariable(decl.id.name, uniqueName);
+        const uniqueName = this.uniqueifyNameString(decl.id.name);
+        this.addVariable(decl.id.name, uniqueName, node.kind);
+
+        if (node.kind === "const") {
+          scope.preventReassign.add(decl.id.name);
         }
-      }
-
-      if (node.type === "FunctionDeclaration") {
-        invariant(node.id);
-
-        const uniqueName = this.uniqueifyNameString(node.id.name);
-        this.addVariable(node.id.name, uniqueName);
-        scope.preventReassign.add(node.id.name);
       }
     }
   }
@@ -436,6 +417,11 @@ class UniqueifyVisitor extends LocatedErrors {
       }
     }
 
+    if (this.ctx.hasGlobal(id.name)) {
+      id.uniqueName = id.name + "@global";
+      return;
+    }
+
     this.borkAt(id, "variable not found " + id.name);
   }
 
@@ -455,15 +441,15 @@ class UniqueifyVisitor extends LocatedErrors {
       }
     }
 
-    const uniqueName = targetScope.variables.get(id.name);
+    const binding = targetScope.variables.get(id.name);
     this.invariantAt(
       id,
-      uniqueName,
+      binding,
       () =>
         `missing variable ${id.name}. Variables must be predeclared using ${this.prepareLetScoped.name} and ${this.prepareVarScoped.name}`
     );
 
-    id.uniqueName = uniqueName.uniqueName;
+    id.uniqueName = binding.uniqueName;
   }
 
   visitNodes(body: Iterable<AnyNode> | AnyNode) {
@@ -479,5 +465,5 @@ class UniqueifyVisitor extends LocatedErrors {
 }
 
 export function uniqueifyNames(program: Program) {
-  new UniqueifyVisitor(program).uniqueifyProgram();
+  new UniqueifyVisitor(new Ctx(), program).uniqueifyProgram();
 }

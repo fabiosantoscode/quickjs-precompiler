@@ -1,5 +1,8 @@
-import { parseJsFile, stringifyJsFile } from "parse";
-import { generateRuntimeForBytecode, jsToBytecode } from "quickjs-bytecode.js";
+import { parseJsFile, stringifyJsFile } from "./parse";
+import {
+  generateRuntimeForBytecode,
+  jsToBytecode,
+} from "./quickjs-bytecode.js";
 import { compileAndRunC } from "./run";
 
 export async function precompileToC(code: string, sourceFile = "unknown") {

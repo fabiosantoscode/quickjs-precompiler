@@ -7,8 +7,6 @@ import {
   Function,
   FunctionExpression,
   ArrowFunctionExpression,
-  FunctionDeclaration,
-  AnonymousFunctionDeclaration,
   AnyNode2,
   BlockStatement,
   StaticBlock,
@@ -35,7 +33,12 @@ export function* astNaiveTraversal(ast: AnyNode): Generator<AnyNode> {
 export function astIsBodyArrayHaver(
   ast: AnyNode2
 ): ast is BlockStatement | Program {
-  return ast.type === "BlockStatement" || ast.type === "Program";
+  return (
+    ast.type === "BlockStatement" ||
+    ast.type === "Program" ||
+    ast.type ===
+      ("StaticBlock" as any /* StaticBlock is *kind of* supported rn */)
+  );
 }
 
 type GoInto = {
@@ -265,6 +268,7 @@ export function* astRawTraversal(
     case "ClassDeclaration":
     case "ClassExpression": {
       invariant(false, "TODO");
+      /*
       if (goInto.classes) {
         if (goInto.patterns && ast.id) {
           yield ast.id;
@@ -309,12 +313,14 @@ export function* astRawTraversal(
           }
         }
       }
+      */
       return;
     }
 
+    // FunctionDeclaration still exists during normalizing
+    case "FunctionDeclaration" as any as "FunctionExpression":
     case "FunctionExpression":
-    case "ArrowFunctionExpression":
-    case "FunctionDeclaration": {
+    case "ArrowFunctionExpression": {
       if (goInto.patterns) {
         if (ast.id) yield ast.id;
       }
@@ -664,11 +670,7 @@ export function* astNaiveChildren(ast: AnyNode | Function): Generator<AnyNode> {
 
 export function isFunction(
   item: AnyNode | Function
-): item is
-  | FunctionDeclaration
-  | AnonymousFunctionDeclaration
-  | FunctionExpression
-  | ArrowFunctionExpression {
+): item is FunctionExpression | ArrowFunctionExpression {
   return (
     item.type === "FunctionDeclaration" ||
     item.type === "FunctionExpression" ||

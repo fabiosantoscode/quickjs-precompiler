@@ -35,14 +35,14 @@ export class LocatedErrors {
     throw err;
   }
 
-  borkAt(node: AnyNode, msg: string | (() => string)): never {
+  borkAt(node: AnyNode, msg: string | (() => string) = "Error"): never {
     this.#throwError(node, msg, this.borkAt);
   }
 
   invariantAt(
     node: AnyNode,
     cond: any,
-    msg: string | (() => string)
+    msg: string | (() => string) = "Invariant violation"
   ): asserts cond {
     if (!cond) {
       this.#throwError(node, msg, this.invariantAt);

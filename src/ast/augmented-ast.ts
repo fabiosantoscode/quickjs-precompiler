@@ -74,7 +74,7 @@ export interface Program extends Node {
   allBindings: Map<string, TrackedBinding>; // AUGMENTED
 }
 
-export interface Function extends Node {
+interface IFunction extends Node {
   id?: Identifier | null;
   params: Array<Pattern>;
   body: BlockStatement; // AUGMENTED: we turn ()=>x into ()=>{return x}
@@ -83,6 +83,8 @@ export interface Function extends Node {
   async: boolean;
   closureInfo: TrackedClosure; // AUGMENTED
 }
+// AUGMENTED: Function is one of two concrete types
+export type Function = ArrowFunctionExpression | FunctionExpression;
 
 export interface ExpressionStatement extends Node {
   type: "ExpressionStatement";
@@ -238,7 +240,7 @@ export interface Property extends Node {
   computed: boolean;
 }
 
-export interface FunctionExpression extends Function {
+export interface FunctionExpression extends IFunction {
   type: "FunctionExpression";
   body: BlockStatement;
 }
@@ -383,7 +385,7 @@ export interface SpreadElement extends Node {
   argument: Expression;
 }
 
-export interface ArrowFunctionExpression extends Function {
+export interface ArrowFunctionExpression extends IFunction {
   type: "ArrowFunctionExpression";
 }
 

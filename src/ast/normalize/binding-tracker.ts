@@ -7,7 +7,6 @@ import {
 import {
   AnyNode,
   ExpressionOrStatement,
-  FunctionExpression,
   Identifier,
   Pattern,
   Program,
@@ -142,7 +141,7 @@ export class BindingTracker extends LocatedErrors {
       }
       case "FunctionExpression":
       case "ArrowFunctionExpression": {
-        this.countPat((node as FunctionExpression).id);
+        this.countPat(node.id);
 
         for (const param of node.params) {
           this.countPat(param);

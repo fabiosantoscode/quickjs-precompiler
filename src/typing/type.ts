@@ -1,7 +1,4 @@
-import {
-  ArrowFunctionExpression,
-  FunctionExpression,
-} from "../ast/augmented-ast";
+import { Function } from "../ast/augmented-ast";
 import { invariant } from "../utils";
 
 /** Expressions will have a TypeVariable, and when some type is known, it will be placed inside. */
@@ -102,16 +99,14 @@ export class NullType implements Type {
 
 export class FunctionType implements Type {
   constructor(
-    public functionNode: FunctionExpression | ArrowFunctionExpression,
+    public functionNode: Function,
     public returns: TypeVariable = new TypeVariable(
       undefined,
-      ((this.functionNode as FunctionExpression)?.id?.uniqueName ||
-        "function") + " return type"
+      (functionNode.id?.uniqueName || "function") + " return type"
     )
   ) {}
   toString() {
-    const name =
-      (this.functionNode as FunctionExpression).id?.uniqueName || "?";
+    const name = this.functionNode.id?.uniqueName || "?";
     let ret = this.returns.type ? ": " + this.returns.type.toString() : "";
     return `Function(${name})${ret}`;
   }

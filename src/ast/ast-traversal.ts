@@ -5,11 +5,8 @@ import {
   Identifier,
   Expression,
   Function,
-  FunctionExpression,
-  ArrowFunctionExpression,
   AnyNode2,
   BlockStatement,
-  StaticBlock,
   ReturnStatement,
   ThrowStatement,
 } from "./augmented-ast";
@@ -646,7 +643,7 @@ export function* astTraverseExitNodes(
   yield* recurse(node);
 }
 
-export function* astNaiveChildren(ast: AnyNode | Function): Generator<AnyNode> {
+export function* astNaiveChildren(ast: AnyNode): Generator<AnyNode> {
   for (const objValue of Object.values(ast)) {
     if (
       typeof objValue === "object" &&
@@ -672,11 +669,9 @@ export function* astNaiveChildren(ast: AnyNode | Function): Generator<AnyNode> {
   }
 }
 
-export function isFunction(
-  item: AnyNode | Function
-): item is FunctionExpression | ArrowFunctionExpression {
+export function isFunction(item: AnyNode): item is Function {
   return (
-    item.type === "FunctionDeclaration" ||
+    (item.type as string) === "FunctionDeclaration" ||
     item.type === "FunctionExpression" ||
     item.type === "ArrowFunctionExpression"
   );

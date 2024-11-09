@@ -205,7 +205,7 @@ class UniqueifyVisitor extends LocatedErrors {
           this.startScope(node, {
             id: this.currentClosureId++,
             name: node.id?.name,
-            node: node as Function,
+            node: node,
             children: [],
             parent: this.currentClosure,
             variables: new Map(),
@@ -216,16 +216,16 @@ class UniqueifyVisitor extends LocatedErrors {
             writable: true,
           });
 
-          this.prepareFunctionScoped(node as Function);
+          this.prepareFunctionScoped(node);
 
-          if (node.type === "FunctionExpression" && node.id) {
+          if (node.id) {
             this.uniqueifyDeclaration(node.id);
           }
           for (const id of astPatternAssignedBindings(node.params)) {
             this.uniqueifyDeclaration(id);
           }
 
-          this.visitNodes((node as Function).body);
+          this.visitNodes(node.body);
         } finally {
           this.finishScope(node);
           invariant(this.currentClosure.parent);
@@ -295,16 +295,14 @@ class UniqueifyVisitor extends LocatedErrors {
   }
 
   prepareFunctionScoped(node: Function) {
-    if (node.type === "FunctionExpression" && node.id) {
+    if (node.id) {
       const uniqueName = this.uniqueifyNameString(node.id.name);
       this.preventReassign.add(uniqueName);
       this.addVariable(node.id.name, uniqueName, "const", true);
     }
 
-    if ("params" in (node as Function)) {
-      for (const paramIdent of astPatternAssignedBindings(
-        (node as Function).params
-      )) {
+    if ("params" in node) {
+      for (const paramIdent of astPatternAssignedBindings(node.params)) {
         const uniqueName = this.uniqueifyNameString(paramIdent.name);
         this.addVariable(paramIdent.name, uniqueName, "let", true);
       }

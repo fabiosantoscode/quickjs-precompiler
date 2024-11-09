@@ -7,9 +7,8 @@ import {
 } from "../ast-traversal";
 import {
   AnyNode,
-  ArrowFunctionExpression,
   BlockStatement,
-  FunctionExpression,
+  Function,
   Identifier,
   Program,
   VariableDeclaration,
@@ -117,7 +116,7 @@ export function hoistLegacyVar(
   }
 }
 
-function hoistFunc(func: FunctionExpression | ArrowFunctionExpression) {
+function hoistFunc(func: Function) {
   hoistLegacyVar(
     func.body,
     astPatternAssignedBindings(func.params).map((id) => id.name)

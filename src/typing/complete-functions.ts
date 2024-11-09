@@ -1,11 +1,5 @@
 import { astNaiveChildren, isFunction } from "../ast/ast-traversal";
-import {
-  AnyNode,
-  Function,
-  FunctionExpression,
-  Identifier,
-  Program,
-} from "../ast/augmented-ast";
+import { AnyNode, Function, Identifier, Program } from "../ast/augmented-ast";
 import { invariant } from "../utils";
 
 /** A "complete" function is one for which we can know all of its function calls. It is never reassigned, but it may belong in multiple aliases. */
@@ -20,8 +14,7 @@ export function findCompleteFunctions(program: Program) {
   function onFunction(node: Function, parent: AnyNode) {
     const aliases: string[] = [];
 
-    const ownId = (node as FunctionExpression).id;
-    if (ownId) aliases.push(ownId.uniqueName);
+    if (node.id) aliases.push(node.id.uniqueName);
 
     if (parent.type === "VariableDeclarator") {
       if (parent.id.type === "Identifier") {

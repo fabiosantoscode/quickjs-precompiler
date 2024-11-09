@@ -5,7 +5,8 @@
     "parser": {
       "syntax": "typescript"
     },
-    "target": "es2021"
+    "target": "es2021",
+    "preserveAllComments": true
   },
   "module": {
     "type": "es6"

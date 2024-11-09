@@ -1,5 +1,8 @@
 {
-    "[javascript]": {
+    "[typescript]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
-    }
+    },
+    "typescript.preferences.importModuleSpecifierEnding": "auto",
+    "editor.indentSize": 2,
+    "editor.detectIndentation": false,
 }

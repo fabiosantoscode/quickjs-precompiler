@@ -1,12 +1,16 @@
 // Copied from acorn's type defs
-// Search for "// AUGMENTED" to find changes
+// Search for "AUGMENTED" to find changes
 
 // AUGMENTED: closure info
 export interface TrackedBinding {
   name: string;
+  kind: "var" | "let" | "const";
   uniqueName: string;
   assignments: number;
   references: number;
+  /** How many times we were referred to, purely as callees */
+  callReferences?: number;
+  possibleMutations: number;
   closure: TrackedClosure;
 }
 
@@ -45,6 +49,7 @@ export interface Position {
 export interface Identifier extends Node {
   type: "Identifier";
   name: string;
+  isReference?: "reference" | "declaration"; // AUGMENTED: is this identifier referring or defining a variable?
   uniqueName: string; // AUGMENTED
 }
 
@@ -71,7 +76,7 @@ export interface Program extends Node {
 export interface Function extends Node {
   id?: Identifier | null;
   params: Array<Pattern>;
-  body: BlockStatement | Expression;
+  body: BlockStatement; // AUGMENTED: we turn ()=>x into ()=>{return x}
   generator: boolean;
   expression: boolean;
   async: boolean;
@@ -196,14 +201,14 @@ export interface FunctionDeclaration extends Function {
 
 export interface VariableDeclaration extends Node {
   type: "VariableDeclaration";
-  declarations: Array<VariableDeclarator>;
+  declarations: readonly [VariableDeclarator]; // AUGMENTED: just one decl
   kind: "var" | "let" | "const";
 }
 
 export interface VariableDeclarator extends Node {
   type: "VariableDeclarator";
   id: Pattern;
-  init?: Expression | null;
+  init: Expression; // AUGMENTED: always present
 }
 
 export interface ThisExpression extends Node {
@@ -551,10 +556,11 @@ export interface ImportExpression extends Node {
   source: Expression;
 }
 
+/* AUGMENTED: this is never present
 export interface ParenthesizedExpression extends Node {
   type: "ParenthesizedExpression";
   expression: Expression;
-}
+} */
 
 export interface PropertyDefinition extends Node {
   type: "PropertyDefinition";
@@ -625,8 +631,8 @@ export type Expression =
   | MetaProperty
   | AwaitExpression
   | ChainExpression
-  | ImportExpression
-  | ParenthesizedExpression;
+  | ImportExpression;
+// AUGMENTED: this is never present: | ParenthesizedExpression
 
 export type Pattern =
   | Identifier
@@ -680,3 +686,47 @@ export type AnyNode =
   | PrivateIdentifier
   | StaticBlock
   | VariableDeclarator;
+
+// AUGMENTED: nodes we care about here
+export type AnyNode2 =
+  | Program
+  | FunctionDeclaration
+  | AnonymousFunctionDeclaration
+  | FunctionExpression
+  | ArrowFunctionExpression
+  | Statement
+  | Expression
+  | ModuleDeclaration
+  | Super
+  | Pattern;
+
+// AUGMENTED: we should be able to know what is an expression
+const expressionTypes = [
+  "Identifier",
+  "Literal",
+  "ThisExpression",
+  "ArrayExpression",
+  "ObjectExpression",
+  "FunctionExpression",
+  "UnaryExpression",
+  "UpdateExpression",
+  "BinaryExpression",
+  "AssignmentExpression",
+  "LogicalExpression",
+  "MemberExpression",
+  "ConditionalExpression",
+  "CallExpression",
+  "NewExpression",
+  "SequenceExpression",
+  "ArrowFunctionExpression",
+  "YieldExpression",
+  "TemplateLiteral",
+  "TaggedTemplateExpression",
+  "ClassExpression",
+  "MetaProperty",
+  "AwaitExpression",
+  "ChainExpression",
+  "ImportExpression",
+];
+export const isExpression = (node: AnyNode): node is Expression =>
+  expressionTypes.includes(node.type);

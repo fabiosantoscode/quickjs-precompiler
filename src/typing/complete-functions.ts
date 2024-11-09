@@ -1,11 +1,11 @@
-import { astNaiveChildren, isFunction } from "../precompiler/ast-traversal";
+import { astNaiveChildren, isFunction } from "../ast/ast-traversal";
 import {
   AnyNode,
   Function,
   FunctionExpression,
   Identifier,
   Program,
-} from "../precompiler/augmented-ast";
+} from "../ast/augmented-ast";
 import { invariant } from "../utils";
 
 /** A "complete" function is one for which we can know all of its function calls. It is never reassigned, but it may belong in multiple aliases. */

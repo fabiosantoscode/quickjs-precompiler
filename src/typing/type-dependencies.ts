@@ -1,4 +1,4 @@
-import { TrackedBinding } from "../precompiler/augmented-ast";
+import { TrackedBinding } from "../ast/augmented-ast";
 import { invariant } from "../utils";
 import { Type, TypeVariable, UndefinedType, typeAnyOf } from "./type";
 import { TypeEnvironment } from "./type-environment";

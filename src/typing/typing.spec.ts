@@ -1,5 +1,5 @@
 import { parseJsFile, stringifyJsFile } from "../parse";
-import { astNaiveTraversal } from "../precompiler/ast-traversal";
+import { astNaiveTraversal } from "../ast/ast-traversal";
 import {
   AnyNode2,
   ArrowFunctionExpression,
@@ -9,7 +9,7 @@ import {
   Program,
   Statement,
   VariableDeclaration,
-} from "../precompiler/augmented-ast";
+} from "../ast/augmented-ast";
 
 /*
  * First, we will associate type variables with our program.

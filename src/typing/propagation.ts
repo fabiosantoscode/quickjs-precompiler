@@ -3,7 +3,7 @@ import {
   astNaiveTraversal,
   astTraverseExitNodes,
   isFunction,
-} from "../precompiler/ast-traversal";
+} from "../ast/ast-traversal";
 import {
   AnyNode,
   AssignmentExpression,
@@ -14,7 +14,7 @@ import {
   isExpression,
   Pattern,
   Program,
-} from "../precompiler/augmented-ast";
+} from "../ast/augmented-ast";
 import { defined, zip } from "../utils";
 import {
   BooleanType,

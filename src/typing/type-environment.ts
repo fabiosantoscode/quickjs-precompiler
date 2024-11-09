@@ -1,4 +1,4 @@
-import { AnyNode } from "../precompiler/augmented-ast";
+import { AnyNode } from "../ast/augmented-ast";
 import { invariant } from "../utils";
 import { ObjectType, TypeVariable, UndefinedType } from "./type";
 import { TypeDependency } from "./type-dependencies";

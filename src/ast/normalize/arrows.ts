@@ -1,4 +1,4 @@
-import { astNaiveTraversal } from "../../precompiler/ast-traversal";
+import { astNaiveTraversal } from "../ast-traversal";
 import { AnyNode } from "../augmented-ast";
 
 /** Normalize arrow functions into always having at least { return X } (IE they will never be expressions) */

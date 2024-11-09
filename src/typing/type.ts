@@ -1,7 +1,7 @@
 import {
   ArrowFunctionExpression,
   FunctionExpression,
-} from "../precompiler/augmented-ast";
+} from "../ast/augmented-ast";
 import { invariant } from "../utils";
 
 /** Expressions will have a TypeVariable, and when some type is known, it will be placed inside. */

@@ -1,4 +1,4 @@
-import { AnyNode } from "./precompiler/augmented-ast";
+import { AnyNode } from "./ast/augmented-ast";
 
 export function mapsetAdd<K, V>(mapset: Map<K, Set<V>>, key: K, value: V) {
   const set = mapset.get(key);

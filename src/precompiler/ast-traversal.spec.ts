@@ -44,7 +44,9 @@ it("traverses all items in an AST", () => {
       x()
     }
 
-    foo: var variable = 'bar'
+    foo: {
+      let variable = 'bar'
+    }
   `);
 
   expect(testTraversal(x, goIntoAll, goThroughAll)).toMatchInlineSnapshot(`
@@ -58,9 +60,10 @@ it("traverses all items in an AST", () => {
     - - - - CallExpression
     - - - - - Identifier
     LabeledStatement
-    - VariableDeclaration
-    - - Identifier
-    - - Literal"
+    - BlockStatement
+    - - VariableDeclaration
+    - - - Identifier
+    - - - Literal"
   `);
 });
 
@@ -70,7 +73,9 @@ it("traverses all items except patterns", () => {
       x()
     }
 
-    foo: var variable = 'bar'
+    foo: {
+      let variable = 'bar'
+    }
   `);
 
   expect(testTraversal(x, { ...goIntoAll, patterns: false }, goThroughAll))
@@ -82,8 +87,9 @@ it("traverses all items except patterns", () => {
     - - - - CallExpression
     - - - - - Identifier
     LabeledStatement
-    - VariableDeclaration
-    - - Literal"
+    - BlockStatement
+    - - VariableDeclaration
+    - - - Literal"
   `);
 });
 
@@ -93,7 +99,9 @@ it("can avoid references", () => {
       x()
     }
 
-    foo: var variable = 'bar'
+    foo: {
+      let variable = 'bar'
+    }
   `);
 
   expect(testTraversal(x, { ...goIntoAll, expressions: false }, goThroughAll))
@@ -105,7 +113,8 @@ it("can avoid references", () => {
     - BlockStatement
     - - ExpressionStatement
     LabeledStatement
-    - VariableDeclaration
-    - - Identifier"
+    - BlockStatement
+    - - VariableDeclaration
+    - - - Identifier"
   `);
 });

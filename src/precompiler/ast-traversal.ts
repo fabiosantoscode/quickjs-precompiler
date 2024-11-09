@@ -33,7 +33,7 @@ export function* astNaiveTraversal(ast: AnyNode): Generator<AnyNode> {
 }
 
 export function astIsBodyArrayHaver(
-  ast: AnyNode2
+  ast: AnyNode
 ): ast is BlockStatement | Program {
   return (
     ast.type === "BlockStatement" ||
@@ -622,28 +622,6 @@ export function* astRawTraversal(
   }
 }
 
-export function* astTraverseBodyHavers(
-  node: AnyNode2
-): Generator<Program | StaticBlock | BlockStatement> {
-  if (node.type === "ClassExpression" || node.type === "ClassDeclaration") {
-    invariant(false, "TODO");
-  }
-
-  function* recurse(
-    node: AnyNode2
-  ): Generator<Program | StaticBlock | BlockStatement> {
-    for (const child of astRawTraversal(node, goIntoStatements, goThroughAll)) {
-      if (astIsBodyArrayHaver(child)) {
-        yield child;
-      } else {
-        yield* recurse(child);
-      }
-    }
-  }
-
-  yield* recurse(node);
-}
-
 export function* astTraverseExitNodes(
   node: AnyNode2
 ): Generator<ReturnStatement | ThrowStatement> {
@@ -705,9 +683,14 @@ export function isFunction(
 }
 
 export function astPatternAssignedBindings(
-  pattern: Pattern,
+  pattern: Pattern | Pattern[],
   items = [] as Identifier[]
 ): Identifier[] {
+  if (Array.isArray(pattern)) {
+    for (const p of pattern) astPatternAssignedBindings(p, items);
+    return items;
+  }
+
   switch (pattern.type) {
     case "Identifier": {
       items.push(pattern);

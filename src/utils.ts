@@ -1,3 +1,5 @@
+import { AnyNode } from "./precompiler/augmented-ast";
+
 export function mapsetAdd<K, V>(mapset: Map<K, Set<V>>, key: K, value: V) {
   const set = mapset.get(key);
   if (!set) {
@@ -74,4 +76,46 @@ export function* zip<T1, T2>(t1: T1[], t2: T2[]): Iterable<[T1, T2]> {
       yield [t1[i], t2[j]];
     }
   }
+}
+
+export function getLoc(inp: AnyNode): {
+  start: AnyNode["start"];
+  end: AnyNode["end"];
+  loc: AnyNode["loc"];
+  range: AnyNode["range"];
+} {
+  const { start, end, loc, range } = inp;
+  return { start, end, loc, range };
+}
+
+export function* iterateReassignable<T>(inp: Array<T>) {
+  for (let i = 0; i < inp.length; i++) {
+    const reassignable = {
+      value: inp[i],
+      replace: (newValue: T) => {
+        inp[i] = reassignable.value = newValue;
+      },
+    };
+
+    yield reassignable;
+  }
+}
+
+type ObjectWithKey<ObjKey extends number | string | symbol, Val> = {
+  [k in ObjKey]: Val;
+};
+
+export function createReassignable<
+  Val,
+  ObjKey extends number | string | symbol,
+  Obj extends ObjectWithKey<ObjKey, Val>
+>(obj: Obj, key: ObjKey) {
+  const reassignable = {
+    value: obj[key],
+    replace: (newValue: Obj[ObjKey]) => {
+      obj[key] = reassignable.value = newValue;
+    },
+  };
+
+  return reassignable;
 }

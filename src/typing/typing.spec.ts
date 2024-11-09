@@ -1,8 +1,5 @@
 import { parseJsFile, stringifyJsFile } from "../parse";
-import {
-  astNaiveTraversal,
-  astTraverseBodyHavers,
-} from "../precompiler/ast-traversal";
+import { astNaiveTraversal } from "../precompiler/ast-traversal";
 import {
   AnyNode2,
   ArrowFunctionExpression,
@@ -44,13 +41,13 @@ it("propagates types to vars", () => {
 it("allows variables to have multiple types (by ignoring those)", () => {
   expect(
     testTypes(`
-      var number = 1
+      let number = 1
       number;
       number = ''
       number;
     `)
   ).toMatchInlineSnapshot(`
-    "var number = /* Number */ (1);
+    "let number = /* Number */ (1);
     /* undefined */ (number);
     /* undefined */ (number = '');
     /* undefined */ (number);"

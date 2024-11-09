@@ -8,6 +8,8 @@ import { normalizeMarkReferences } from "./precompiler/normalize/mark-references
 import { normalizeVariableDeclarations } from "./precompiler/normalize/variable-declarations";
 import { normalizeHoistedFunctions } from "./precompiler/normalize/normalize-hoisted-functions";
 import { BindingTracker } from "./precompiler/normalize/binding-tracker";
+import { hoistLegacyVar } from "./precompiler/normalize/hoist-var";
+import { normalizeLabels } from "./precompiler/normalize/labels";
 
 export interface Options {
   sourceFile?: string;
@@ -25,11 +27,13 @@ export function parseJsFile(
     locations: true,
   }) as Program;
 
+  normalizeLabels(program);
   normalizeBareReturns(program);
   normalizeArrowFunctions(program);
   normalizeVariableDeclarations(program);
   normalizeHoistedFunctions(program);
   normalizeMarkReferences(program);
+  hoistLegacyVar(program);
 
   uniqueifyNames(program);
 

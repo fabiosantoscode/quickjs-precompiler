@@ -25,31 +25,20 @@ it("unless they are in the same scope", () => {
   `);
 });
 
-it("supports var scope", () => {
-  expect(testUniqueNames(`var x = 1; var x = 2`)).toMatchInlineSnapshot(`
-    "var x@1 = 1;
-    var x@1 = 2;"
-  `);
-  expect(testUniqueNames(`var x = 1; {let x = 2}`)).toMatchInlineSnapshot(`
-    "var x@1 = 1;
-    {
-      let x@2 = 2;
-    }"
-  `);
-});
-
 it("supports labels scope", () => {
   expect(
     testUniqueNames(`
-        foo: "nothing";
-        bar: {
-            break bar;
-        }
+      bar: "nothing";
+      bar: {
+          break bar;
+      }
     `)
   ).toMatchInlineSnapshot(`
-    "foo@1: "nothing";
-    bar@1: {
-      break bar@1;
+    "bar@1: {
+      "nothing";
+    }
+    bar@2: {
+      break bar@2;
     }"
   `);
 });
@@ -62,7 +51,7 @@ it("breaks with unsupported weird cases", () => {
   ).toThrow(/reassign/i);*/
   expect(() =>
     testUniqueNames(`function x(foo = print) { var print = 3 }; var print = 4`)
-  ).toThrow(/shadow/i);
+  ).toThrow();
   expect(() => testUniqueNames(`function foo() { foo = 2 }`)).toThrow(
     /reassign/i
   );

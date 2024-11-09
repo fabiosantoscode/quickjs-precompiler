@@ -4,7 +4,7 @@
 // AUGMENTED: closure info
 export interface TrackedBinding {
   name: string;
-  kind: "var" | "let" | "const";
+  kind: "let" | "const";
   /** False when it's a global */
   explicitlyDefined: boolean;
   uniqueName: string;
@@ -20,7 +20,6 @@ export interface TrackedBinding {
 export interface TrackedClosure {
   id: number;
   name?: string;
-  kind: "var" | "let";
   node: Program | Function;
   children: TrackedClosure[];
   parent?: TrackedClosure;
@@ -118,7 +117,7 @@ export interface ReturnStatement extends Node {
 export interface LabeledStatement extends Node {
   type: "LabeledStatement";
   label: Identifier;
-  body: Statement;
+  body: BlockStatement; // AUGMENTED: this is always a block
 }
 
 export interface BreakStatement extends Node {
@@ -206,7 +205,7 @@ export interface FunctionDeclaration extends Function {
 export interface VariableDeclaration extends Node {
   type: "VariableDeclaration";
   declarations: readonly [VariableDeclarator]; // AUGMENTED: just one decl
-  kind: "var" | "let" | "const";
+  kind: "let" | "const"; // AUGMENTED: var removed during normalization
 }
 
 export interface VariableDeclarator extends Node {

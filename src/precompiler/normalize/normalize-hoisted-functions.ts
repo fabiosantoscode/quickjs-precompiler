@@ -9,7 +9,7 @@ import {
   StaticBlock,
   VariableDeclaration,
 } from "../augmented-ast";
-import { defined } from "../../utils";
+import { defined, invariant } from "../../utils";
 
 export function normalizeHoistedFunctions(
   root: StaticBlock | BlockStatement | Program
@@ -17,6 +17,15 @@ export function normalizeHoistedFunctions(
   hoist(root);
 
   for (const maybeBodyHaver of astNaiveTraversal(root)) {
+    if (
+      (maybeBodyHaver.type === "ExportDefaultDeclaration" &&
+        (maybeBodyHaver.declaration.type as string) ===
+          "FunctionDeclaration") ||
+      (maybeBodyHaver.type === "ExportNamedDeclaration" &&
+        (maybeBodyHaver.declaration?.type as string) === "FunctionDeclaration")
+    ) {
+      invariant(false, "TODO");
+    }
     if (
       astIsBodyArrayHaver(maybeBodyHaver as AnyNode2) &&
       maybeBodyHaver !== root

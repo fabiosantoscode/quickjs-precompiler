@@ -5,6 +5,8 @@
 export interface TrackedBinding {
   name: string;
   kind: "var" | "let" | "const";
+  /** False when it's a global */
+  explicitlyDefined: boolean
   uniqueName: string;
   assignments: number;
   references: number;
@@ -110,7 +112,7 @@ export interface WithStatement extends Node {
 
 export interface ReturnStatement extends Node {
   type: "ReturnStatement";
-  argument?: Expression | null;
+  argument: Expression; // AUGMENTED: we turn `return` into `return undefined`
 }
 
 export interface LabeledStatement extends Node {

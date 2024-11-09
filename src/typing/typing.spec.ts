@@ -1,8 +1,11 @@
 import { parseJsFile, stringifyJsFile } from "../parse";
-import { astNaiveTraversal, astTraverseBodyHavers } from "../precompiler/ast-traversal";
 import {
-    AnyNode2,
-    ArrowFunctionExpression,
+  astNaiveTraversal,
+  astTraverseBodyHavers,
+} from "../precompiler/ast-traversal";
+import {
+  AnyNode2,
+  ArrowFunctionExpression,
   CallExpression,
   Expression,
   Identifier,
@@ -32,7 +35,7 @@ it("propagates types to vars", () => {
       let dependentVar = variable + 1
     `)
   ).toMatchInlineSnapshot(`
-    "let variable = /* 1 */ (1);
+    "let variable = /* Number */ (1);
     let expression = /* Number */ (1 + 1);
     let dependentVar = /* Number */ (variable + 1);"
   `);
@@ -47,7 +50,7 @@ it("allows variables to have multiple types (by ignoring those)", () => {
       number;
     `)
   ).toMatchInlineSnapshot(`
-    "var number = /* 1 */ (1);
+    "var number = /* Number */ (1);
     /* undefined */ (number);
     /* undefined */ (number = '');
     /* undefined */ (number);"
@@ -60,16 +63,28 @@ it("marks functions as having a unique type", () => {
       function func1(x) { return x }
       let func2 = x => x
       let func3 = function(x) { return x }
+    `)
+  ).toMatchInlineSnapshot(`
+    "const func1 = /* Function(func1@2) */ (function func1(/* undefined */ (x)) {
+      return /* undefined */ (x);
+    });
+    let func2 = /* Function(?) */ ((/* undefined */ (x)) => {
+      return /* undefined */ (x);
+    });
+    let func3 = /* Function(?) */ (function (/* undefined */ (x)) {
+      return /* undefined */ (x);
+    });"
+  `);
+});
+
+it("reference types will copy the original", () => {
+  expect(
+    testTypes(`
+      function func1(x) { return x }
       func1;
     `)
   ).toMatchInlineSnapshot(`
-    "const func1 = /* Function(func1@2) */ (function func1(x) {
-      return /* undefined */ (x);
-    });
-    let func2 = /* Function(?) */ (x => {
-      return /* undefined */ (x);
-    });
-    let func3 = /* Function(?) */ (function (x) {
+    "const func1 = /* Function(func1@2) */ (function func1(/* undefined */ (x)) {
       return /* undefined */ (x);
     });
     /* Function(func1@2) */ (func1);"
@@ -83,14 +98,14 @@ it("marks the return type", () => {
       func1(1)
     `)
   ).toMatchInlineSnapshot(`
-    "const func1 = /* Function(func1@2) */ (function func1(/* 1 */ (x)) {
-      return /* 1 */ (x);
+    "const func1 = /* Function(func1@2): Number */ (function func1(/* Number */ (x)) {
+      return /* Number */ (x);
     });
-    /* Number(1) */ (func1(1));"
+    /* Number */ (func1(1));"
   `);
 });
 
-it.only("understands function return types", () => {
+it("understands function return types", () => {
   // TODO this lower-level test will look deeper
   var [{ body }, env] = testTypesEnv(`
       let number = (x => x)(1)
@@ -104,9 +119,28 @@ it.only("understands function return types", () => {
   const xPassedArgTVar = defined(env.typeVars.get(call.arguments[0]));
   // const callTVar = defined(env.typeVars.get(call)?.type);
 
-  expect(env.dependentTypes.get(xArgTVar)).toMatchInlineSnapshot(`something`);
+  expect(env.getTypeDependency(xArgTVar)).toMatchInlineSnapshot(`
+    TypeDependencyBindingAssignments {
+      "comment": "variable x@1 depends on 1 assignments",
+      "possibilities": [
+        TypeVariable {
+          "comment": "Literal expression",
+          "type": NumberType {
+            "specificValue": 1,
+          },
+        },
+      ],
+      "target": TypeVariable {
+        "comment": "x@1 binding",
+        "type": NumberType {
+          "specificValue": 1,
+        },
+      },
+      "targetPossibilityCount": 1,
+    }
+  `);
 
-  expect(tVar.toString()).toMatchInlineSnapshot(`"Function(?)"`);
+  expect(tVar.toString()).toMatchInlineSnapshot(`"Function(?): Number"`);
   expect(tVar.returns.type).toMatchInlineSnapshot(`
     NumberType {
       "specificValue": 1,
@@ -147,7 +181,7 @@ it("handles polymorphic function arg types (by ignoring them)", () => {
       let string = id('1')
     `)
   ).toMatchInlineSnapshot(`
-    "let id = /* Function(?) */ (/* undefined */ (x) => {
+    "let id = /* Function(?) */ ((/* undefined */ (x)) => {
       return /* undefined */ (x);
     });
     let number = /* undefined */ (id(1));
@@ -178,7 +212,7 @@ function testShowAllTypes(env: TypeEnvironment, program: Program) {
         arguments: [wrapped],
         callee: {
           type: "Identifier",
-          name: `/* ${type?.type?.specificValue ?? type?.type?.toString()} */ `,
+          name: `/* ${type?.type?.toString()} */ `,
         } as Identifier,
       } as CallExpression;
     };
@@ -196,13 +230,16 @@ function testShowAllTypes(env: TypeEnvironment, program: Program) {
         break;
       }
       case "FunctionExpression":
-        case "ArrowFunctionExpression": {
-          for (const [p, param] of Object.entries(node.params)) {
-            invariant(param.type === 'Identifier')
-            node.params[p as any] = wrap(param, env.bindingVars.get(param.uniqueName)) as any
-          }
-          break
+      case "ArrowFunctionExpression": {
+        for (const [p, param] of Object.entries(node.params)) {
+          invariant(param.type === "Identifier");
+          node.params[p as any] = wrap(
+            param,
+            env.bindingVars.get(param.uniqueName)
+          ) as any;
         }
+        break;
+      }
     }
   }
 

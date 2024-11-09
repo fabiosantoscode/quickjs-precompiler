@@ -1,6 +1,7 @@
-import { AnyNode, TrackedBinding } from "../precompiler/augmented-ast";
-import { TypeVariable, UndefinedType, ObjectType } from "./type";
-import { DependentType, VarDependentType } from "./type-dependencies";
+import { AnyNode } from "../precompiler/augmented-ast";
+import { invariant } from "../utils";
+import { ObjectType, TypeVariable, UndefinedType } from "./type";
+import { TypeDependency } from "./type-dependencies";
 
 /** Mappings between expressions/bindings and the TypeVariable within. */
 export class TypeEnvironment {
@@ -17,6 +18,20 @@ export class TypeEnvironment {
       ),
     })
   );
-  dependentTypes = new Map<TypeVariable, DependentType>();
-  varDependentTypes = new Map<TrackedBinding, VarDependentType>();
+
+  #typeDependencies = new Map<TypeVariable, TypeDependency>()
+
+  addTypeDependency(dependency: TypeDependency) {
+    invariant(!this.#typeDependencies.has(dependency.target), 'dependency already exists')
+
+    this.#typeDependencies.set(dependency.target, dependency)
+  }
+
+  getTypeDependency(key: TypeVariable) {
+    return this.#typeDependencies.get(key)
+  }
+
+  getAllTypeDependencies() {
+    return new Set(this.#typeDependencies.values())
+  }
 }

@@ -22,8 +22,11 @@ export class BindingTracker extends LocatedErrors {
   }
 
   binding(name: string): TrackedBinding {
-    invariant(typeof name === 'string')
-    invariant(this.root.allBindings.has(name), () => `${name} is not in allBindings`)
+    invariant(typeof name === "string");
+    invariant(
+      this.root.allBindings.has(name),
+      () => `${name} is not in allBindings`
+    );
     let binding = defined(this.root.allBindings.get(defined(name)));
 
     return binding;
@@ -208,7 +211,7 @@ export class BindingTracker extends LocatedErrors {
         return;
       }
       case "VariableDeclaration": {
-        const decl = node.declarations[0]
+        const decl = node.declarations[0];
         this.countPat(decl.id);
         this.visit(decl.init);
         return;

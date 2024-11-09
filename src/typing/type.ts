@@ -9,12 +9,12 @@ export class TypeVariable {
   constructor(public type?: Type, public comment?: string) {}
 
   [Symbol.for("nodejs.util.inspect.custom")]() {
-    let ret = `TypeVariable(`
-    if (this.comment) ret += `'${this.comment}' = `
-    if (this.type) ret += `${this.type.toString()}`
-    else ret += `unknown`
-    ret += ')'
-    return ret
+    let ret = `TypeVariable(`;
+    if (this.comment) ret += `'${this.comment}' = `;
+    if (this.type) ret += `${this.type.toString()}`;
+    else ret += `unknown`;
+    ret += ")";
+    return ret;
   }
 }
 
@@ -113,9 +113,7 @@ export class FunctionType implements Type {
   toString() {
     const name =
       (this.functionNode as FunctionExpression).id?.uniqueName || "?";
-    let ret = this.returns.type
-      ? ': ' + this.returns.type.toString()
-      : ''
+    let ret = this.returns.type ? ": " + this.returns.type.toString() : "";
     return `Function(${name})${ret}`;
   }
   extends(other: Type): boolean {

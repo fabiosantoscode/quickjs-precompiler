@@ -3,119 +3,100 @@ import { invariant } from "../utils";
 import { Type, TypeVariable, typeAnyOf } from "./type";
 import { TypeEnvironment } from "./type-environment";
 
-export type TypeBack = (vars: Type[]) => [done: boolean, t: Type | null];
+export type TypeBack = (vars: Type[]) => Type | null;
 
-/** Dependent types are defined by callbacks, that can be called when other TypeVariables are known. They are removed when they return done: true, otherwise they may be called again with more info later. */
-export type DependentType = {
-  dependencies: TypeVariable[];
+export interface TypeDependency {
+  comment?: string;
   target: TypeVariable;
-  comment?: string
-  typeBack: TypeBack;
-};
+  pump(): [boolean, Type | null];
+}
 
-export const addDependentType = (
-  env: TypeEnvironment,
-  {
-    dependencies,
-    target,
-    comment,
-    typeBack,
-  }: {
-    dependencies: TypeVariable[];
-    target: TypeVariable;
-    comment?: string
-    typeBack: TypeBack;
+export class TypeDependencyBindingAssignments implements TypeDependency {
+  constructor(
+    public comment: string,
+    public target: TypeVariable,
+    public targetPossibilityCount: number,
+    public possibilities: TypeVariable[] = [],
+  ) {}
+
+  pump(): [boolean, Type | null] {
+    if (
+      this.targetPossibilityCount != null &&
+      this.possibilities.length === this.targetPossibilityCount &&
+      this.possibilities.every((tVar) => tVar.type)
+    ) {
+      return [true, typeAnyOf(this.possibilities.map((tVar) => tVar.type)) ?? null];
+    } else {
+      return [false, null];
+    }
   }
-) => {
-  const dt = { dependencies, target, comment, typeBack };
+}
 
-  // Index it
-  invariant(!env.dependentTypes.has(dt.target));
-  env.dependentTypes.set(dt.target, dt);
-};
+export class TypeDependencyCopy implements TypeDependency {
+  constructor(
+    public comment: string,
+    public target: TypeVariable,
+    public source: TypeVariable
+  ) {}
 
-export const propagateDependentTypes = (
-  env: TypeEnvironment,
-  tVar: TypeVariable
-) => {
-  const dependent = env.dependentTypes.get(tVar);
-  invariant(dependent?.target.type == null)
-
-  if (!dependent?.dependencies.every((dep) => dep.type)) return;
-
-  const types = dependent.dependencies.map((dep) => dep.type) as Type[];
-  const [done, computedType] = dependent.typeBack(types);
-
-  if (done) {
-    env.dependentTypes.delete(dependent.target);
+  pump(): [boolean, Type | null] {
+    if (this.source.type) {
+      return [true, this.source.type];
+    } else {
+      return [false, null];
+    }
   }
+}
 
-  const existingType = dependent.target.type;
-  if (computedType != null && existingType != null) {
-    // TODO: this is probably good to make sure for testing
-    invariant(computedType.extends(existingType));
+export class TypeDependencyCopyReturnToCall implements TypeDependency {
+  constructor(
+    public comment: string,
+    public target: TypeVariable,
+    public source: TypeVariable
+  ) {}
+
+  pump(): [boolean, Type | null] {
+    if (this.source.type) {
+      return [true, this.source.type ?? null];
+    } else {
+      return [false, null];
+    }
   }
+}
 
-  if (computedType) {
-    dependent.target.type = computedType;
+export class TypeDependencyReturnType implements TypeDependency {
+  constructor(
+    public comment: string,
+    public target: TypeVariable,
+    public returnedValues: TypeVariable[]
+  ) {}
+
+  pump(): [boolean, Type | null] {
+    if (this.returnedValues.every(tVar => tVar.type)) {
+      return [true, typeAnyOf(this.returnedValues.map(tVar => tVar.type)) ?? null];
+    } else {
+      return [false, null];
+    }
   }
-};
+}
 
-/**
- * A variable's value depends on many TypeVariables. When we know all possibilities, we know that the binding is a union of them all
- */
-export type VarDependentType = {
-  target: TypeVariable;
-  possibilities: TypeVariable[];
-  binding: TrackedBinding;
-  comments: (string|undefined)[];
-};
+export class TypeDependencyTypeBack implements TypeDependency {
+  constructor(
+    public comment: string,
+    public target: TypeVariable,
+    public dependencies: TypeVariable[],
+    public typeBack: TypeBack
+  ) {}
 
-export const addVarDependentType = (
-  env: TypeEnvironment,
-  {
-    binding,
-    target,
-    possibility,
-    comment
-  }: {
-    binding: TrackedBinding;
-    target: TypeVariable;
-    possibility: TypeVariable;
-    comment: string
+  pump(): [boolean, Type | null] {
+    const targetType =
+      this.dependencies.every((tVar) => tVar.type) &&
+      this.typeBack(this.dependencies.map((tVar) => tVar.type!));
+
+    if (targetType) {
+      return [true, targetType];
+    } else {
+      return [false, null];
+    }
   }
-) => {
-  let vdt = env.varDependentTypes.get(binding);
-  if (!vdt) {
-    vdt = {
-      target: target,
-      possibilities: [],
-      binding,
-      comments: []
-    };
-    env.varDependentTypes.set(binding, vdt);
-  }
-  invariant(
-    vdt.target === target,
-    "targetTVar must be a binding shared by all variables of its name"
-  );
-  vdt.possibilities.push(possibility);
-  vdt.comments.push(comment)
-};
-
-export const propagateVarDependentTypes = (
-  env: TypeEnvironment,
-  binding: TrackedBinding
-) => {
-  const vdt = env.varDependentTypes.get(binding);
-  if (!vdt) return;
-
-  const { target, possibilities } = vdt;
-  invariant(binding.assignments <= possibilities.length);
-  if (binding.assignments === possibilities.length) {
-    invariant(target.type == null)
-
-    target.type = typeAnyOf(possibilities.map((tVar) => tVar.type));
-    if (target.type) env.varDependentTypes.delete(binding);
-  }
-};
+}

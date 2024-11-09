@@ -31,7 +31,7 @@ class UniqueifyVisitor extends LocatedErrors {
       isGlobal: true,
     },
   ];
-  preventReassign = new Set(['undefined@global', 'globalThis@global']);
+  preventReassign = new Set(["undefined@global", "globalThis@global"]);
   currentClosureId = 1;
   currentClosure: TrackedClosure;
   labels = new Map<string, string>();
@@ -118,11 +118,18 @@ class UniqueifyVisitor extends LocatedErrors {
     }
   }
 
-  addVariable(name: string, uniqueName: string, kind: TrackedBinding["kind"], atScope = this.scopes[this.scopes.length - 1]) {
+  addVariable(
+    name: string,
+    uniqueName: string,
+    kind: TrackedBinding["kind"],
+    reassignable: boolean,
+    atScope = this.scopes[this.scopes.length - 1]
+  ) {
     const binding: TrackedBinding = {
       name,
       uniqueName,
       kind,
+      explicitlyDefined: reassignable,
       assignments: 0,
       references: 0,
       possibleMutations: 0,
@@ -229,8 +236,8 @@ class UniqueifyVisitor extends LocatedErrors {
 
           this.prepareVarScoped(node as Function);
 
-          if (node.type === 'FunctionExpression' && node.id) {
-            this.uniqueifyDeclaration(node.id, 'const')
+          if (node.type === "FunctionExpression" && node.id) {
+            this.uniqueifyDeclaration(node.id, "const");
           }
           for (const param of node.params) {
             this.uniqueifyDeclaration(param, "var");
@@ -255,7 +262,7 @@ class UniqueifyVisitor extends LocatedErrors {
           invariant(false, "not supported: logical assignment");
         }
         this.visitNodes(astNaiveChildren(node));
-        
+
         // Prevent reassign!
         for (const assignee of astPatternAssignedBindings(node.left)) {
           if (this.preventReassign.has(assignee.uniqueName)) {
@@ -310,10 +317,10 @@ class UniqueifyVisitor extends LocatedErrors {
 
     invariant(scope.type === "var");
 
-    if (node.type === 'FunctionExpression' && node.id) {
+    if (node.type === "FunctionExpression" && node.id) {
       const uniqueName = this.uniqueifyNameString(node.id.name);
-      this.preventReassign.add(uniqueName)
-      this.addVariable(node.id.name, uniqueName, 'const');
+      this.preventReassign.add(uniqueName);
+      this.addVariable(node.id.name, uniqueName, "const", true);
     }
 
     if ("params" in (node as Function)) {
@@ -351,7 +358,7 @@ class UniqueifyVisitor extends LocatedErrors {
 
     for (const [name, users] of found.entries()) {
       const uniqueName = this.uniqueifyNameString(name);
-      this.addVariable(name, uniqueName, "var");
+      this.addVariable(name, uniqueName, "var", true);
     }
   }
 
@@ -365,7 +372,7 @@ class UniqueifyVisitor extends LocatedErrors {
         invariant(decl.id.type === "Identifier");
 
         const uniqueName = this.uniqueifyNameString(decl.id.name);
-        this.addVariable(decl.id.name, uniqueName, node.kind);
+        this.addVariable(decl.id.name, uniqueName, node.kind, true);
 
         if (node.kind === "const") {
           this.preventReassign.add(defined(uniqueName));
@@ -404,7 +411,7 @@ class UniqueifyVisitor extends LocatedErrors {
       id.uniqueName = id.name + "@global";
 
       if (!this.globalScope.variables.has(id.uniqueName)) {
-        this.addVariable(id.name, id.uniqueName, 'var', this.globalScope)
+        this.addVariable(id.name, id.uniqueName, "const", false, this.globalScope);
       }
 
       return;

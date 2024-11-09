@@ -7,8 +7,14 @@ export class TypeEnvironment {
   typeVars = new Map<AnyNode, TypeVariable>();
   bindingVars = new Map<string, TypeVariable>(
     Object.entries({
-      "undefined@global": new TypeVariable(new UndefinedType()),
-      "globalThis@global": new TypeVariable(new ObjectType()),
+      "undefined@global": new TypeVariable(
+        new UndefinedType(),
+        'global variable "undefined"'
+      ),
+      "globalThis@global": new TypeVariable(
+        new ObjectType(),
+        'global variable "globalThis"'
+      ),
     })
   );
   dependentTypes = new Map<TypeVariable, DependentType>();

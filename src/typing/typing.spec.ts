@@ -1,6 +1,8 @@
 import { parseJsFile, stringifyJsFile } from "../parse";
-import { astTraverseBodyHavers } from "../precompiler/ast-traversal";
+import { astNaiveTraversal, astTraverseBodyHavers } from "../precompiler/ast-traversal";
 import {
+    AnyNode2,
+    ArrowFunctionExpression,
   CallExpression,
   Expression,
   Identifier,
@@ -19,7 +21,7 @@ import { TypeEnvironment } from "./type-environment";
  * Documented more within propagateTypes()
  */
 import { propagateTypes } from "./propagation";
-import { defined } from "../utils";
+import { defined, invariant } from "../utils";
 import { FunctionType } from "./type";
 
 it("propagates types to vars", () => {
@@ -62,36 +64,65 @@ it("marks functions as having a unique type", () => {
     `)
   ).toMatchInlineSnapshot(`
     "const func1 = /* Function(func1@2) */ (function func1(x) {
-      return x;
+      return /* undefined */ (x);
     });
     let func2 = /* Function(?) */ (x => {
-      return x;
+      return /* undefined */ (x);
     });
     let func3 = /* Function(?) */ (function (x) {
-      return x;
+      return /* undefined */ (x);
     });
     /* Function(func1@2) */ (func1);"
   `);
 });
 
-it.skip("understands function return types", () => {
+it("marks the return type", () => {
+  expect(
+    testTypes(`
+      function func1(x) { return x }
+      func1(1)
+    `)
+  ).toMatchInlineSnapshot(`
+    "const func1 = /* Function(func1@2) */ (function func1(/* 1 */ (x)) {
+      return /* 1 */ (x);
+    });
+    /* Number(1) */ (func1(1));"
+  `);
+});
+
+it.only("understands function return types", () => {
+  // TODO this lower-level test will look deeper
   var [{ body }, env] = testTypesEnv(`
       let number = (x => x)(1)
   `);
-  const callee = (
-    (body[0] as VariableDeclaration).declarations[0].init as CallExpression
-  ).callee;
+  const call = (body[0] as VariableDeclaration).declarations[0]
+    .init as CallExpression;
+  const callee = call.callee as ArrowFunctionExpression;
+
   const tVar = defined(env.typeVars.get(callee)?.type) as FunctionType;
   const xArgTVar = defined(env.bindingVars.get("x@1"));
+  const xPassedArgTVar = defined(env.typeVars.get(call.arguments[0]));
+  // const callTVar = defined(env.typeVars.get(call)?.type);
+
+  expect(env.dependentTypes.get(xArgTVar)).toMatchInlineSnapshot(`something`);
 
   expect(tVar.toString()).toMatchInlineSnapshot(`"Function(?)"`);
-  expect(xArgTVar).toMatchInlineSnapshot(`
-    TypeVariable {
-      "type": undefined,
+  expect(tVar.returns.type).toMatchInlineSnapshot(`
+    NumberType {
+      "specificValue": 1,
     }
   `);
-
-  expect(false).toBe(true); // TODO take the stuff discovered in complete-functions.ts and start knowing the param types for all functions (most generic taken from all calls)
+  expect(xPassedArgTVar.type).toMatchInlineSnapshot(`
+    NumberType {
+      "specificValue": 1,
+    }
+  `);
+  expect(xArgTVar.type).toMatchInlineSnapshot(`
+    NumberType {
+      "specificValue": 1,
+    }
+  `);
+  //expect(callTVar).toMatchInlineSnapshot();
 });
 
 /*
@@ -116,8 +147,8 @@ it("handles polymorphic function arg types (by ignoring them)", () => {
       let string = id('1')
     `)
   ).toMatchInlineSnapshot(`
-    "let id = /* Function(?) */ (x => {
-      return x;
+    "let id = /* Function(?) */ (/* undefined */ (x) => {
+      return /* undefined */ (x);
     });
     let number = /* undefined */ (id(1));
     let string = /* undefined */ (id('1'));"
@@ -140,9 +171,8 @@ function testTypesEnv(code: string): [Program, TypeEnvironment] {
 }
 
 function testShowAllTypes(env: TypeEnvironment, program: Program) {
-  function mark(node: Statement) {
-    const wrap = (wrapped: Expression) => {
-      const type = env.typeVars.get(wrapped);
+  function mark(node: AnyNode2) {
+    const wrap = (wrapped: Expression, type = env.typeVars.get(wrapped)) => {
       return {
         type: "CallExpression",
         arguments: [wrapped],
@@ -161,16 +191,23 @@ function testShowAllTypes(env: TypeEnvironment, program: Program) {
         node.expression = wrap(node.expression);
         break;
       }
+      case "ReturnStatement": {
+        node.argument = wrap(defined(node.argument));
+        break;
+      }
+      case "FunctionExpression":
+        case "ArrowFunctionExpression": {
+          for (const [p, param] of Object.entries(node.params)) {
+            invariant(param.type === 'Identifier')
+            node.params[p as any] = wrap(param, env.bindingVars.get(param.uniqueName)) as any
+          }
+          break
+        }
     }
   }
 
-  for (const item of program.body) {
+  for (const item of astNaiveTraversal(program)) {
     mark(item as Statement);
-  }
-  for (const { body } of astTraverseBodyHavers(program)) {
-    for (const item of body) {
-      mark(item as Statement);
-    }
   }
 
   return stringifyJsFile(program);

@@ -1,4 +1,4 @@
-import { invariant } from "../utils";
+import { defined, invariant } from "../utils";
 import {
   astNaiveChildren,
   astNaiveTraversal,
@@ -28,10 +28,10 @@ class UniqueifyVisitor extends LocatedErrors {
     {
       type: "var" as "var" | "let",
       variables: new Map<string, TrackedBinding>(),
-      preventReassign: new Set(),
       isGlobal: true,
     },
   ];
+  preventReassign = new Set(['undefined@global', 'globalThis@global']);
   currentClosureId = 1;
   currentClosure: TrackedClosure;
   labels = new Map<string, string>();
@@ -118,9 +118,7 @@ class UniqueifyVisitor extends LocatedErrors {
     }
   }
 
-  addVariable(name: string, uniqueName: string, kind: TrackedBinding["kind"]) {
-    const scope = this.scopes[this.scopes.length - 1];
-
+  addVariable(name: string, uniqueName: string, kind: TrackedBinding["kind"], atScope = this.scopes[this.scopes.length - 1]) {
     const binding: TrackedBinding = {
       name,
       uniqueName,
@@ -130,7 +128,7 @@ class UniqueifyVisitor extends LocatedErrors {
       possibleMutations: 0,
       closure: this.currentClosure,
     };
-    scope.variables.set(name, binding);
+    atScope.variables.set(name, binding);
     this.currentClosure.variables.set(uniqueName, binding);
     this.root.allBindings.set(uniqueName, binding);
   }
@@ -184,7 +182,6 @@ class UniqueifyVisitor extends LocatedErrors {
         this.scopes.push({
           type: "let",
           variables: new Map(),
-          preventReassign: new Set(),
           isGlobal: false,
         });
         this.prepareLetScoped(node.body);
@@ -209,29 +206,10 @@ class UniqueifyVisitor extends LocatedErrors {
       // Functions
       case "ArrowFunctionExpression":
       case "FunctionExpression": {
-        // function's own name, should be constant
-        let functionName;
-
-        const variables = new Map();
-        const preventReassign = new Set();
-
-        if (node.type === "FunctionExpression" && node.id) {
-          // Name for this function, used inside
-          if (!functionName) {
-            functionName = this.uniqueifyNameString(node.id.name);
-            node.id.uniqueName = functionName;
-          }
-        }
-
-        if (functionName) {
-          preventReassign.add(functionName);
-        }
-
         try {
           this.scopes.push({
             type: "var",
-            variables,
-            preventReassign,
+            variables: new Map(),
             isGlobal: false,
           });
           this.startScope(node, {
@@ -251,6 +229,9 @@ class UniqueifyVisitor extends LocatedErrors {
 
           this.prepareVarScoped(node as Function);
 
+          if (node.type === 'FunctionExpression' && node.id) {
+            this.uniqueifyDeclaration(node.id, 'const')
+          }
           for (const param of node.params) {
             this.uniqueifyDeclaration(param, "var");
           }
@@ -273,19 +254,17 @@ class UniqueifyVisitor extends LocatedErrors {
         ) {
           invariant(false, "not supported: logical assignment");
         }
+        this.visitNodes(astNaiveChildren(node));
+        
+        // Prevent reassign!
         for (const assignee of astPatternAssignedBindings(node.left)) {
-          let scope = this.scopes.findLast((scop) =>
-            scop.variables.has(assignee.name)
-          );
-
-          if (scope?.preventReassign.has(assignee.name)) {
+          if (this.preventReassign.has(assignee.uniqueName)) {
             this.borkAt(
               assignee,
               "Cannot reassign (is this the name of a FunctionDeclaration or const?)"
             );
           }
         }
-        this.visitNodes(astNaiveChildren(node));
         return;
       }
       case "MemberExpression": {
@@ -331,6 +310,12 @@ class UniqueifyVisitor extends LocatedErrors {
 
     invariant(scope.type === "var");
 
+    if (node.type === 'FunctionExpression' && node.id) {
+      const uniqueName = this.uniqueifyNameString(node.id.name);
+      this.preventReassign.add(uniqueName)
+      this.addVariable(node.id.name, uniqueName, 'const');
+    }
+
     if ("params" in (node as Function)) {
       for (const param of (node as Function).params) {
         for (const paramIdent of astPatternAssignedBindings(param)) {
@@ -371,8 +356,6 @@ class UniqueifyVisitor extends LocatedErrors {
   }
 
   prepareLetScoped(body: Iterable<AnyNode>) {
-    const scope = this.scopes[this.scopes.length - 1];
-
     for (const node of body) {
       if (
         node.type === "VariableDeclaration" &&
@@ -385,7 +368,7 @@ class UniqueifyVisitor extends LocatedErrors {
         this.addVariable(decl.id.name, uniqueName, node.kind);
 
         if (node.kind === "const") {
-          scope.preventReassign.add(decl.id.name);
+          this.preventReassign.add(defined(uniqueName));
         }
       }
     }
@@ -419,18 +402,24 @@ class UniqueifyVisitor extends LocatedErrors {
 
     if (this.ctx.hasGlobal(id.name)) {
       id.uniqueName = id.name + "@global";
+
+      if (!this.globalScope.variables.has(id.uniqueName)) {
+        this.addVariable(id.name, id.uniqueName, 'var', this.globalScope)
+      }
+
       return;
     }
 
     this.borkAt(id, "variable not found " + id.name);
   }
 
-  uniqueifyDeclaration(id: Pattern, declKind: "var" | "let") {
+  uniqueifyDeclaration(id: Pattern, declKind: "var" | "let" | "const") {
     invariant(id.type === "Identifier", "destructuring untested");
 
     let targetScope;
 
     switch (declKind) {
+      case "const":
       case "let": {
         targetScope = this.scopes[this.scopes.length - 1];
         break;

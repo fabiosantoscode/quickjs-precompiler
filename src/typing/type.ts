@@ -6,7 +6,16 @@ import { invariant } from "../utils";
 
 /** Expressions will have a TypeVariable, and when some type is known, it will be placed inside. */
 export class TypeVariable {
-  constructor(public type?: Type) {}
+  constructor(public type?: Type, public comment?: string) {}
+
+  [Symbol.for("nodejs.util.inspect.custom")]() {
+    let ret = `TypeVariable(`
+    if (this.comment) ret += `'${this.comment}' = `
+    if (this.type) ret += `${this.type.toString()}`
+    else ret += `unknown`
+    ret += ')'
+    return ret
+  }
 }
 
 /** Types can be simple types (IE Just the number 3) or complex types (IE this type is Number or String).
@@ -94,12 +103,20 @@ export class NullType implements Type {
 
 export class FunctionType implements Type {
   constructor(
-    public functionNode: FunctionExpression | ArrowFunctionExpression
+    public functionNode: FunctionExpression | ArrowFunctionExpression,
+    public returns: TypeVariable = new TypeVariable(
+      undefined,
+      ((this.functionNode as FunctionExpression)?.id?.uniqueName ||
+        "function") + " return type"
+    )
   ) {}
   toString() {
     const name =
       (this.functionNode as FunctionExpression).id?.uniqueName || "?";
-    return `Function(${name})`;
+    let ret = this.returns.type
+      ? ': ' + this.returns.type.toString()
+      : ''
+    return `Function(${name})${ret}`;
   }
   extends(other: Type): boolean {
     return (

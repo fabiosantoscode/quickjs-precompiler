@@ -1,7 +1,7 @@
 import * as acorn from "acorn";
 import * as astring from "astring";
 import type { Program } from "./precompiler/augmented-ast";
-import { uniqueifyNames } from "./precompiler/identify-scope";
+import { uniqueifyNames } from "./precompiler/uniqueify-names";
 import { normalizeArrowFunctions } from "./precompiler/normalize/arrows";
 import { normalizeMarkReferences } from "./precompiler/normalize/mark-references";
 import { normalizeVariableDeclarations } from "./precompiler/normalize/variable-declarations";
@@ -25,9 +25,9 @@ export function parseJsFile(
   }) as Program;
 
   normalizeArrowFunctions(program);
-  normalizeMarkReferences(program);
   normalizeVariableDeclarations(program);
   normalizeHoistedFunctions(program);
+  normalizeMarkReferences(program);
 
   uniqueifyNames(program);
 

@@ -10,6 +10,8 @@ import {
   AnyNode2,
   BlockStatement,
   StaticBlock,
+  ReturnStatement,
+  ThrowStatement,
 } from "./augmented-ast";
 import { invariant } from "../utils";
 
@@ -37,7 +39,7 @@ export function astIsBodyArrayHaver(
     ast.type === "BlockStatement" ||
     ast.type === "Program" ||
     ast.type ===
-      ("StaticBlock" as any /* StaticBlock is *kind of* supported rn */)
+      ("StaticBlock" as any) /* StaticBlock is *kind of* supported rn */
   );
 }
 
@@ -633,6 +635,30 @@ export function* astTraverseBodyHavers(
     for (const child of astRawTraversal(node, goIntoStatements, goThroughAll)) {
       if (astIsBodyArrayHaver(child)) {
         yield child;
+      } else {
+        yield* recurse(child);
+      }
+    }
+  }
+
+  yield* recurse(node);
+}
+
+export function* astTraverseExitNodes(
+  node: AnyNode2
+): Generator<ReturnStatement | ThrowStatement> {
+  if (node.type === "ClassExpression" || node.type === "ClassDeclaration") {
+    invariant(false, "TODO");
+  }
+
+  function* recurse(
+    node: AnyNode2
+  ): Generator<ReturnStatement | ThrowStatement> {
+    for (const child of astRawTraversal(node, goIntoStatements, goThroughAll)) {
+      if (child.type === "ReturnStatement" || child.type === "ThrowStatement") {
+        yield child;
+      } else if (isFunction(child)) {
+        // do not go into functions
       } else {
         yield* recurse(child);
       }

@@ -69,6 +69,20 @@ it("counts assignments", () => {
       "references": 1,
     }
   `);
+
+  expect(
+    testCounts(
+      `
+        const func = (x) => {}
+      `,
+      "x@1"
+    )
+  ).toMatchInlineSnapshot(`
+    {
+      "assignments": 1,
+      "references": 0,
+    }
+  `);
 });
 
 it("finds trivially found closure calls", () => {

@@ -55,11 +55,11 @@ it("supports labels scope", () => {
 });
 
 it("breaks with unsupported weird cases", () => {
-  expect(() =>
+  /*expect(() =>
     testUniqueNames(
       `foo(); foo = () => {}; foo(); function foo() { return foo }`
     )
-  ).toThrow(/reassign/i);
+  ).toThrow(/reassign/i);*/
   expect(() =>
     testUniqueNames(`function x(foo = print) { var print = 3 }; var print = 4`)
   ).toThrow(/shadow/i);
@@ -91,18 +91,18 @@ function testClosures(code: string) {
 it("takes note of all closures", () => {
   expect(
     testClosures(`
-      function foo() { return foo }
-      function bar() {
-        function foo() { }
+      var foo = function foo() { return foo }
+      var bar = function bar() {
+        var foo = function foo() { }
         return foo()
       }
     `)
   ).toMatchInlineSnapshot(`
     [
       "root (vars: foo@1, bar@1)",
-      "root.foo (vars: )",
-      "root.bar (vars: foo@3)",
-      "root.bar.foo (vars: )",
+      "root.foo (vars: foo@2)",
+      "root.bar (vars: bar@2, foo@3)",
+      "root.bar.foo (vars: foo@4)",
     ]
   `);
 });

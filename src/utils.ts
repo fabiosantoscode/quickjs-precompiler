@@ -33,11 +33,28 @@ export function maparrayDelete<K, V>(
 
 export function defined<T>(maybeUndef: T | undefined | null): T {
   if (maybeUndef === null || maybeUndef === undefined) {
-    const e = new Error("Unexpected " + maybeUndef + " value");
+    const e = new Error("Expected defined value, got " + maybeUndef);
     Error.captureStackTrace(e, defined);
     throw e;
   }
   return maybeUndef;
+}
+
+export function ofType<T extends { type: TypeStr }, TypeStr extends string>(
+  maybeUndef: T | { [x: string]: any } | undefined | null,
+  type: TypeStr
+): T {
+  if (maybeUndef === null || maybeUndef === undefined) {
+    const e = new Error("Expected defined value, got " + maybeUndef);
+    Error.captureStackTrace(e, ofType);
+    throw e;
+  }
+  if (maybeUndef.type !== type) {
+    const e = new Error("Expected type " + type + ", got " + maybeUndef.type);
+    Error.captureStackTrace(e, ofType);
+    throw e;
+  }
+  return maybeUndef as T;
 }
 
 export function invariant(
@@ -48,5 +65,13 @@ export function invariant(
     const e = new Error(typeof msg === "function" ? msg() : msg);
     Error.captureStackTrace(e, invariant);
     throw e;
+  }
+}
+
+export function* zip<T1, T2>(t1: T1[], t2: T2[]): Iterable<[T1, T2]> {
+  for (let i = 0; i < t1.length; i++) {
+    for (let j = 0; j < t2.length; j++) {
+      yield [t1[i], t2[j]];
+    }
   }
 }

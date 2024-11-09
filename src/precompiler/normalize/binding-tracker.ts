@@ -22,9 +22,9 @@ export class BindingTracker extends LocatedErrors {
   }
 
   binding(name: string): TrackedBinding {
-    defined(name);
-
-    let binding = defined(this.root.allBindings.get(name));
+    invariant(typeof name === 'string')
+    invariant(this.root.allBindings.has(name), () => `${name} is not in allBindings`)
+    let binding = defined(this.root.allBindings.get(defined(name)));
 
     return binding;
   }
@@ -63,13 +63,13 @@ export class BindingTracker extends LocatedErrors {
     }
   }
 
-  visit(node?: AnyNode | null, comprises = new Set<string>()) {
+  visit(node?: AnyNode | null) {
     if (node == null) return;
 
     switch (node.type) {
       case "Identifier": {
         // the rest of the code should ensure no non-reference identifiers get here
-        invariant(node.isReference === "reference");
+        invariant(node.isReference === "reference", node.uniqueName);
         this.countRef(node);
         return;
       }
@@ -208,9 +208,9 @@ export class BindingTracker extends LocatedErrors {
         return;
       }
       case "VariableDeclaration": {
-        for (const decl of node.declarations) {
-          this.countPat(decl.id);
-        }
+        const decl = node.declarations[0]
+        this.countPat(decl.id);
+        this.visit(decl.init);
         return;
       }
       // for-in-of

@@ -9,16 +9,25 @@ export type TypeBack = (vars: Type[]) => [done: boolean, t: Type | null];
 export type DependentType = {
   dependencies: TypeVariable[];
   target: TypeVariable;
+  comment?: string
   typeBack: TypeBack;
 };
 
 export const addDependentType = (
   env: TypeEnvironment,
-  dependencies: TypeVariable[],
-  target: TypeVariable,
-  typeBack: TypeBack
+  {
+    dependencies,
+    target,
+    comment,
+    typeBack,
+  }: {
+    dependencies: TypeVariable[];
+    target: TypeVariable;
+    comment?: string
+    typeBack: TypeBack;
+  }
 ) => {
-  const dt = { dependencies, target, typeBack };
+  const dt = { dependencies, target, comment, typeBack };
 
   // Index it
   invariant(!env.dependentTypes.has(dt.target));
@@ -30,6 +39,8 @@ export const propagateDependentTypes = (
   tVar: TypeVariable
 ) => {
   const dependent = env.dependentTypes.get(tVar);
+  invariant(dependent?.target.type == null)
+
   if (!dependent?.dependencies.every((dep) => dep.type)) return;
 
   const types = dependent.dependencies.map((dep) => dep.type) as Type[];
@@ -57,13 +68,22 @@ export type VarDependentType = {
   target: TypeVariable;
   possibilities: TypeVariable[];
   binding: TrackedBinding;
+  comments: (string|undefined)[];
 };
 
 export const addVarDependentType = (
   env: TypeEnvironment,
-  binding: TrackedBinding,
-  target: TypeVariable,
-  possibility: TypeVariable
+  {
+    binding,
+    target,
+    possibility,
+    comment
+  }: {
+    binding: TrackedBinding;
+    target: TypeVariable;
+    possibility: TypeVariable;
+    comment: string
+  }
 ) => {
   let vdt = env.varDependentTypes.get(binding);
   if (!vdt) {
@@ -71,6 +91,7 @@ export const addVarDependentType = (
       target: target,
       possibilities: [],
       binding,
+      comments: []
     };
     env.varDependentTypes.set(binding, vdt);
   }
@@ -79,6 +100,7 @@ export const addVarDependentType = (
     "targetTVar must be a binding shared by all variables of its name"
   );
   vdt.possibilities.push(possibility);
+  vdt.comments.push(comment)
 };
 
 export const propagateVarDependentTypes = (
@@ -91,6 +113,8 @@ export const propagateVarDependentTypes = (
   const { target, possibilities } = vdt;
   invariant(binding.assignments <= possibilities.length);
   if (binding.assignments === possibilities.length) {
+    invariant(target.type == null)
+
     target.type = typeAnyOf(possibilities.map((tVar) => tVar.type));
     if (target.type) env.varDependentTypes.delete(binding);
   }

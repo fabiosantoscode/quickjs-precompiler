@@ -46,7 +46,7 @@ export function normalizeMarkReferences(root: Program) {
       goThroughAll
     );
     for (const child of children) {
-      justReferences(child);
+      patterns(child);
     }
   }
 

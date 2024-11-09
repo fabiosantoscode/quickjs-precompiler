@@ -1,7 +1,7 @@
 import * as acorn from "acorn";
 import * as astring from "astring";
 import type { Program } from "./ast/augmented-ast";
-import { normalizeAll } from './ast/normalize/all'
+import { normalizeAll } from "./ast/normalize/all";
 
 export interface Options {
   sourceFile?: string;
@@ -19,7 +19,7 @@ export function parseJsFile(
     locations: true,
   }) as Program;
 
-  normalizeAll(program)
+  normalizeAll(program);
 
   return program;
 }

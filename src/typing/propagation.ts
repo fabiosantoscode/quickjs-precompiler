@@ -24,7 +24,6 @@ import {
   NumericType,
   StringType,
   Type,
-  typeAnyOf,
   TypeVariable,
   UndefinedType,
 } from "./type";
@@ -64,7 +63,7 @@ export function propagateTypes(env: TypeEnvironment, program: Program) {
 
 function pass0AssignTypeVariables(env: TypeEnvironment, program: Program) {
   for (const binding of program.allBindings.values()) {
-    env.bindingVars.set(
+    env.setBindingType(
       binding.uniqueName,
       new TypeVariable(undefined, binding.uniqueName + " binding")
     );
@@ -73,19 +72,13 @@ function pass0AssignTypeVariables(env: TypeEnvironment, program: Program) {
   for (const node of astNaiveTraversal(program)) {
     if (node.type === "Identifier") {
       if (node.isReference) {
-        const inClosure = env.bindingVars.get(node.uniqueName);
+        const inClosure = env.getBindingType(node.uniqueName);
         invariant(node.uniqueName);
-        invariant(inClosure);
-        env.typeVars.set(node, inClosure);
+        env.setNodeType(node, inClosure);
       }
     } else if (isExpression(node)) {
       const tVar = new TypeVariable(undefined, node.type + " expression");
-      env.typeVars.set(node, tVar);
-
-      if (node.type === "FunctionExpression" && node.id) {
-        env.bindingVars.set(node.id.uniqueName, tVar);
-        env.typeVars.set(node.id, tVar);
-      }
+      env.setNodeType(node, tVar);
     }
   }
 }
@@ -94,14 +87,8 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
   for (const node of astNaiveTraversal(program)) {
     if (isExpression(node)) {
       /** When you just know that the type is for example NumberType, or equal to another node's type */
-      const just = (theType?: Type | TypeVariable) => {
-        invariant(theType);
-
-        if (theType instanceof TypeVariable) {
-          env.typeVars.set(node, theType);
-        } else {
-          env.typeVars.get(node)!.type = theType;
-        }
+      const just = (theType: Type) => {
+        env.getNodeType(node).type = theType;
       };
 
       switch (node.type) {
@@ -267,7 +254,7 @@ function pass2MarkAssignments(env: TypeEnvironment, program: Program) {
     if (bind.explicitlyDefined) {
       const tDep = new TypeDependencyBindingAssignments(
         `variable ${bind.uniqueName} depends on ${bind.assignments} assignments`,
-        defined(env.bindingVars.get(bind.uniqueName)),
+        env.getBindingType(bind.uniqueName),
         bind.assignments,
         []
       );
@@ -322,7 +309,7 @@ function pass2MarkAssignments(env: TypeEnvironment, program: Program) {
 
       const { left, right, operator, isConstant } = asAssignmentLike;
 
-      const possibility = defined(env.typeVars.get(right));
+      const possibility = env.getNodeType(right);
 
       /* TODO treat const differently
       if (isConstant) {
@@ -348,10 +335,10 @@ function pass3MarkDependentTypes(env: TypeEnvironment, program: Program) {
         comment: string,
         typeBack: TypeBack
       ) => {
-        const target = env.typeVars.get(node);
+        const target = env.getNodeType(node);
         invariant(target);
         const dependencies = dependsOn.map((t) => {
-          const tVar = t instanceof TypeVariable ? t : env.typeVars.get(t);
+          const tVar = t instanceof TypeVariable ? t : env.getNodeType(t);
           invariant(tVar);
           return tVar;
         });
@@ -543,7 +530,7 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
         : isFunction(node.callee)
         ? node.callee
         : undefined;
-    const tVar = funcNode && env.typeVars.get(funcNode as any);
+    const tVar = funcNode && env.getNodeType(funcNode as any);
 
     if (!funcNode || !tVar) continue;
 
@@ -551,7 +538,7 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
   }
 
   for (const func of calls.keys()) {
-    const tVarFunc = env.typeVars.get(func as FunctionExpression);
+    const tVarFunc = env.getNodeType(func as FunctionExpression);
     invariant(tVarFunc?.type instanceof FunctionType);
     const callExprNodes = defined(calls.get(func));
 
@@ -578,7 +565,7 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
       }
 
       for (let paramI = 0; paramI < func.params.length; paramI++) {
-        argTVars[paramI].push(env.typeVars.get(callExpr.arguments[paramI]));
+        argTVars[paramI].push(env.getNodeType(callExpr.arguments[paramI]));
       }
     }
 
@@ -593,7 +580,7 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
 
       // params already have a type dependency here
 
-      const dep = env.getTypeDependency(defined(env.bindingVars.get(argName)));
+      const dep = env.getTypeDependency(env.getBindingType(argName));
       invariant(dep instanceof TypeDependencyBindingAssignments);
 
       dep.targetPossibilityCount += passedArgs.length;
@@ -618,7 +605,7 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
         "TODO normalize plain return to `return undefined`"
       );
 
-      return defined(env.typeVars.get(node.argument));
+      return env.getNodeType(node.argument);
     });
 
     const tVarRet = (tVarFunc.type as FunctionType).returns;
@@ -635,7 +622,7 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
       env.addTypeDependency(
         new TypeDependencyCopyReturnToCall(
           "copy the function ret into the callsite",
-          defined(env.typeVars.get(call)),
+          env.getNodeType(call),
           tVarRet
         )
       );

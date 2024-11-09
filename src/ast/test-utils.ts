@@ -4,7 +4,7 @@ import { astNaiveTraversal } from "./ast-traversal";
 export function testRevealUniqueNames(inp: AnyNode) {
   for (const node of astNaiveTraversal(inp)) {
     if (node.type === "Identifier") {
-      node.name = node.uniqueName || "noUniqueNameHere";
+      node.name = node.uniqueName || "<noUniqueName>";
     }
   }
 }

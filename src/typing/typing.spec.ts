@@ -111,10 +111,10 @@ it("understands function return types", () => {
     .init as CallExpression;
   const callee = call.callee as ArrowFunctionExpression;
 
-  const tVar = defined(env.typeVars.get(callee)?.type) as FunctionType;
-  const xArgTVar = defined(env.bindingVars.get("x@1"));
-  const xPassedArgTVar = defined(env.typeVars.get(call.arguments[0]));
-  // const callTVar = defined(env.typeVars.get(call)?.type);
+  const tVar = env.getNodeType(callee)?.type as FunctionType;
+  const xArgTVar = env.getBindingType("x@1");
+  const xPassedArgTVar = env.getNodeType(call.arguments[0]);
+  const callTVar = env.getNodeType(call)?.type;
 
   expect(env.getTypeDependency(xArgTVar)).toMatchInlineSnapshot(`
     TypeDependencyBindingAssignments {
@@ -153,7 +153,11 @@ it("understands function return types", () => {
       "specificValue": 1,
     }
   `);
-  //expect(callTVar).toMatchInlineSnapshot();
+  expect(callTVar).toMatchInlineSnapshot(`
+    NumberType {
+      "specificValue": 1,
+    }
+  `);
 });
 
 /*
@@ -203,7 +207,7 @@ function testTypesEnv(code: string): [Program, TypeEnvironment] {
 
 function testShowAllTypes(env: TypeEnvironment, program: Program) {
   function mark(node: AnyNode2) {
-    const wrap = (wrapped: Expression, type = env.typeVars.get(wrapped)) => {
+    const wrap = (wrapped: Expression, type = env.getNodeType(wrapped)) => {
       return {
         type: "CallExpression",
         arguments: [wrapped],
@@ -232,7 +236,7 @@ function testShowAllTypes(env: TypeEnvironment, program: Program) {
           invariant(param.type === "Identifier");
           node.params[p as any] = wrap(
             param,
-            env.bindingVars.get(param.uniqueName)
+            env.getBindingType(param.uniqueName)
           ) as any;
         }
         break;

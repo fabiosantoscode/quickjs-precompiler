@@ -43,7 +43,6 @@ export class NumberType implements Type {
 }
 
 export class NumericType implements Type {
-  constructor() {}
   toString() {
     return "Numeric";
   }

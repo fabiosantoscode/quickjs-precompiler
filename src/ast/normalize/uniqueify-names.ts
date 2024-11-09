@@ -27,7 +27,7 @@ class UniqueifyVisitor extends LocatedErrors {
       isGlobal: true,
     },
   ];
-  preventReassign = new Set(["undefined@global", "globalThis@global"]);
+  preventReassign = new Set();
   currentClosureId = 1;
   currentClosure: TrackedClosure;
   labels = new Map<string, string>();

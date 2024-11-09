@@ -1,5 +1,18 @@
 import { AnyNode } from "./ast/augmented-ast";
 
+export function mapGetOrDo<K, V>(
+  map: Map<K, V> | WeakMap<any, V>,
+  key: K,
+  orDo: () => V
+) {
+  if (map.has(key)) return map.get(key) as V;
+  else {
+    const newItem = orDo();
+    map.set(key, newItem);
+    return newItem;
+  }
+}
+
 export function mapsetAdd<K, V>(mapset: Map<K, Set<V>>, key: K, value: V) {
   const set = mapset.get(key);
   if (!set) {

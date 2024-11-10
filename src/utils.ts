@@ -106,7 +106,11 @@ export function* iterateReassignable<T>(inp: Array<T>) {
     const reassignable = {
       value: inp[i],
       replace: (newValue: T) => {
-        inp[i] = reassignable.value = newValue;
+        return (inp[i] = reassignable.value = newValue);
+      },
+      prepend: (...valueBefore: T[]) => {
+        inp.splice(i, 0, ...valueBefore);
+        i += valueBefore.length;
       },
     };
 
@@ -114,19 +118,18 @@ export function* iterateReassignable<T>(inp: Array<T>) {
   }
 }
 
-type ObjectWithKey<ObjKey extends number | string | symbol, Val> = {
-  [k in ObjKey]: Val;
+export type SimpleReassignable<V> = {
+  value: V;
+  replace: (newValue: V) => V;
 };
-
 export function createReassignable<
-  Val,
-  ObjKey extends number | string | symbol,
-  Obj extends ObjectWithKey<ObjKey, Val>
->(obj: Obj, key: ObjKey) {
+  ObjKey extends keyof Obj,
+  Obj extends object
+>(obj: Obj, key: ObjKey): SimpleReassignable<Obj[ObjKey]> {
   const reassignable = {
     value: obj[key],
     replace: (newValue: Obj[ObjKey]) => {
-      obj[key] = reassignable.value = newValue;
+      return (obj[key] = reassignable.value = newValue);
     },
   };
 

@@ -9,16 +9,24 @@ import { hoistLegacyVar } from "./hoist-var";
 import { normalizeLabels } from "./labels";
 
 import { Program } from "../augmented-ast";
+import { removeFunctionsFromExpressions } from "./remove-functions-from-expressions";
+import { ensureBlocks } from "./ensure-blocks";
 
 export function normalizeAll(program: Program) {
+  // Most basic AST shape, optional values
+  ensureBlocks(program);
   normalizeLabels(program);
   normalizeBareReturns(program);
   normalizeArrowFunctions(program);
+
+  // Move variables around
   normalizeVariableDeclarations(program);
   normalizeHoistedFunctions(program);
+  removeFunctionsFromExpressions(program);
   normalizeMarkReferences(program);
   hoistLegacyVar(program);
 
+  // Mark all identifiers with .uniqueName
   uniqueifyNames(program);
 
   new BindingTracker(program).visit(program);

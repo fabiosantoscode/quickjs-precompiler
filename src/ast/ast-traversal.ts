@@ -10,7 +10,7 @@ import {
   ReturnStatement,
   ThrowStatement,
 } from "./augmented-ast";
-import { invariant } from "../utils";
+import { createReassignable, invariant, SimpleReassignable } from "../utils";
 
 export const unknownAbort = new Error("not an error. aborting due to unknown");
 
@@ -102,14 +102,18 @@ export function* astRawTraversal(
     }
   }
   function* throughPattern(
-    thing?: Pattern | null
+    thing?: Pattern | null,
+    root = false
   ): Generator<AnyNode2, undefined, undefined> {
     switch (thing?.type) {
-      case undefined:
+      case undefined: {
         return;
+      }
 
-      case "Identifier":
+      case "Identifier": {
+        if (!root) yield thing;
         return;
+      }
 
       case "ArrayPattern": {
         for (const item of thing.elements) yield* throughPattern(item);
@@ -164,7 +168,7 @@ export function* astRawTraversal(
       }
 
       default: {
-        invariant(false, "unreachable");
+        invariant(false, "unreachable (" + (thing as any).type + ")");
       }
     }
   }
@@ -243,7 +247,7 @@ export function* astRawTraversal(
       } else if (goThrough.tryCatch) {
         yield ast.block;
         if (ast.handler) {
-          yield* throughPattern(ast.handler.param);
+          yield* throughPattern(ast.handler.param, true);
           yield ast.handler.body;
         }
         if (ast.finalizer) yield ast.finalizer;
@@ -256,7 +260,7 @@ export function* astRawTraversal(
       const { id, init } = ast.declarations[0];
 
       if (goInto.patterns) yield id;
-      else if (goThrough.patterns) yield* throughPattern(id);
+      else if (goThrough.patterns) yield* throughPattern(id, true);
       if (goInto.expressions && init) yield init;
       else if (goThrough.expressions && init) yield* through(init);
 
@@ -272,7 +276,7 @@ export function* astRawTraversal(
         if (goInto.patterns && ast.id) {
           yield ast.id;
         } else if (goThrough.patterns && ast.id) {
-          yield* throughPattern(ast.id);
+          yield* throughPattern(ast.id, true);
         }
 
         for (const item of ast.body.body) {
@@ -331,7 +335,7 @@ export function* astRawTraversal(
           }
         } else if (goThrough.patterns) {
           for (const pat of ast.params) {
-            yield* throughPattern(pat);
+            yield* throughPattern(pat, true);
           }
         }
 
@@ -547,7 +551,7 @@ export function* astRawTraversal(
     // Other exprs
     case "AssignmentExpression": {
       if (goInto.patterns) yield ast.left;
-      else if (goThrough.patterns) yield* throughPattern(ast.left);
+      else if (goThrough.patterns) yield* throughPattern(ast.left, true);
       if (goInto.expressions) yield ast.right;
       else if (goThrough.expressions) yield* through(ast.right);
       return;
@@ -609,7 +613,7 @@ export function* astRawTraversal(
     case "ArrayPattern":
     case "RestElement":
     case "AssignmentPattern": {
-      yield* throughPattern(ast);
+      yield* throughPattern(ast, true);
       return;
     }
 
@@ -652,9 +656,7 @@ export function* astNaiveChildren(ast: AnyNode): Generator<AnyNode> {
       typeof objValue["type"] === "string"
     ) {
       yield objValue as AnyNode;
-    }
-
-    if (Array.isArray(objValue)) {
+    } else if (Array.isArray(objValue)) {
       for (const arrayItem of objValue) {
         if (
           typeof arrayItem === "object" &&
@@ -663,6 +665,32 @@ export function* astNaiveChildren(ast: AnyNode): Generator<AnyNode> {
           typeof arrayItem["type"] === "string"
         ) {
           yield arrayItem as AnyNode;
+        }
+      }
+    }
+  }
+}
+
+export function* astNaiveChildrenReassignable(
+  ast: AnyNode
+): Generator<SimpleReassignable<AnyNode>> {
+  for (const [key, objValue] of Object.entries(ast)) {
+    if (
+      typeof objValue === "object" &&
+      objValue != null &&
+      "type" in objValue &&
+      typeof objValue["type"] === "string"
+    ) {
+      yield createReassignable(ast, key as any);
+    } else if (Array.isArray(objValue)) {
+      for (let index = 0; index < objValue.length; index++) {
+        if (
+          typeof objValue[index] === "object" &&
+          objValue[index] != null &&
+          "type" in objValue[index] &&
+          typeof objValue[index]["type"] === "string"
+        ) {
+          yield createReassignable(objValue, index);
         }
       }
     }

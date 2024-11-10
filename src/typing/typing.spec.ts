@@ -105,9 +105,10 @@ it("marks the return type", () => {
 it("understands function return types", () => {
   // TODO this lower-level test will look deeper
   var [{ body }, env] = testTypesEnv(`
-      let number = (x => x)(1)
+    let callee = x => x;
+    let number = callee(1);
   `);
-  const call = (body[0] as VariableDeclaration).declarations[0]
+  const call = (body[1] as VariableDeclaration).declarations[0]
     .init as CallExpression;
   const callee = call.callee as ArrowFunctionExpression;
 

@@ -81,6 +81,18 @@ export class BindingTracker extends LocatedErrors {
 
         return;
       }
+      case "UpdateExpression": {
+        // https://262.ecma-international.org/6.0/#sec-static-semantics-static-semantics-isvalidsimpleassignmenttarget
+        // https://262.ecma-international.org/6.0/#sec-identifiers-static-semantics-isvalidsimpleassignmenttarget
+        if (
+          node.argument.type === "Identifier" ||
+          node.argument.type === "MemberExpression"
+        ) {
+          this.countPat(node.argument);
+        }
+
+        return;
+      }
       // Basic Structures
       case "ObjectExpression": {
         for (const prop of node.properties) {
@@ -217,9 +229,14 @@ export class BindingTracker extends LocatedErrors {
       }
       // for-in-of
       case "ForInStatement":
-        invariant(false, "TODO");
-      case "ForOfStatement":
-        invariant(false, "TODO");
+      case "ForOfStatement": {
+        if (node.left.type === "VariableDeclaration") {
+          this.visit(node.left);
+        } else {
+          this.countPat(node.left);
+        }
+        this.visit(node.right);
+      }
       // Labels
       case "BreakStatement": {
         return;

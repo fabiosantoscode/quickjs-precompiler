@@ -39,10 +39,14 @@ export function maparrayDelete<K, V>(
   key: K,
   value: V
 ) {
-  const set = maparray.get(key);
-  let idx = 0;
-  while (set && (idx = set.indexOf(value)) >= 0) {
-    set.splice(idx, 1);
+  const arr = maparray.get(key);
+  if (!arr) return;
+
+  let i = arr.length;
+  while (i--) {
+    if (arr[i] === value) {
+      arr.splice(i, 1);
+    }
   }
 }
 

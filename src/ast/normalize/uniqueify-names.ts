@@ -263,7 +263,39 @@ class UniqueifyVisitor extends LocatedErrors {
         }
         return;
       }
+      // loops' heads have a scope
+
+      case "ForStatement":
+      case "ForInStatement":
+      case "ForOfStatement": {
+        const headNodes = [];
+        if (node.type === "ForStatement") {
+          node.init && headNodes.push(node.init);
+          node.test && headNodes.push(node.test);
+          node.update && headNodes.push(node.update);
+        } else {
+          headNodes.push(node.right);
+          headNodes.push(node.left);
+        }
+
+        this.scopes.push({
+          variables: new Map(),
+          isGlobal: false,
+        });
+        this.prepareLetScoped(headNodes);
+
+        try {
+          for (const head of headNodes) this.visitNode(head);
+          this.visitNode(node.body);
+        } finally {
+          invariant(this.scopes.pop());
+        }
+
+        return;
+      }
       // Pass-through nodes
+      case "WhileStatement":
+      case "DoWhileStatement":
       case "ArrayExpression":
       case "ArrayPattern":
       case "ObjectPattern":
@@ -274,6 +306,8 @@ class UniqueifyVisitor extends LocatedErrors {
       case "ExpressionStatement":
       case "ReturnStatement":
       case "ThrowStatement":
+      case "UpdateExpression":
+      case "UnaryExpression":
       case "YieldExpression":
       case "AwaitExpression":
       case "CallExpression":

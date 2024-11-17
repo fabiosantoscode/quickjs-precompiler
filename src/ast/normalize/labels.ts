@@ -1,6 +1,5 @@
-import { time } from "console";
-import { getLoc, iterateReassignable } from "../../utils";
-import { astIsBodyArrayHaver, astNaiveTraversal } from "../ast-traversal";
+import { astMakeBlockOfOne } from "../ast-make";
+import { astNaiveTraversal } from "../ast-traversal";
 import { Program } from "../augmented-ast";
 
 /**
@@ -12,13 +11,7 @@ export function normalizeLabels(root: Program) {
       item.type === "LabeledStatement" &&
       item.body.type !== "BlockStatement"
     ) {
-      const loc = getLoc(item);
-
-      item.body = {
-        type: "BlockStatement",
-        body: [item.body],
-        ...loc,
-      };
+      item.body = astMakeBlockOfOne(item.body);
     }
   }
 }

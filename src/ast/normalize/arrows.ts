@@ -1,3 +1,5 @@
+import { getLoc } from "../../utils";
+import { astMakeBlockOfOne } from "../ast-make";
 import { astNaiveTraversal } from "../ast-traversal";
 import { AnyNode } from "../augmented-ast";
 
@@ -8,25 +10,11 @@ export function normalizeArrowFunctions(root: AnyNode) {
       thing.type === "ArrowFunctionExpression" &&
       thing.body.type !== "BlockStatement"
     ) {
-      const { start, end, loc, range } = thing.body;
-
-      thing.body = {
-        type: "BlockStatement",
-        body: [
-          {
-            type: "ReturnStatement",
-            argument: thing.body as any,
-            start,
-            end,
-            loc,
-            range,
-          },
-        ],
-        start,
-        end,
-        loc,
-        range,
-      };
+      thing.body = astMakeBlockOfOne({
+        type: "ReturnStatement",
+        argument: thing.body as any,
+        ...getLoc(thing.body),
+      });
     }
   }
 }

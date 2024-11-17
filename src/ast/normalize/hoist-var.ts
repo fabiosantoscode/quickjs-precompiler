@@ -1,4 +1,9 @@
-import { getLoc } from "../../utils";
+import { getLoc, iterateReassignable } from "../../utils";
+import {
+  astMakeExpressionStatement,
+  astMakeLet,
+  astMakeUndefined,
+} from "../ast-make";
 import {
   astIsBodyArrayHaver,
   astNaiveChildren,
@@ -19,10 +24,7 @@ export function hoistLegacyVar(
   varScopeRoot: Program | BlockStatement,
   paramNames: string[] = []
 ) {
-  const varsSeenBeforeDecl = new Set<string>();
-  const varDecls = new Map<string, Identifier | null>(
-    paramNames.map((name) => [name, null])
-  );
+  const varDecls = new Map<string, Identifier>();
 
   // Find `var` and either turn them into `let` or turn into assignment and add to `varDecls`
   (function recurse(node: AnyNode) {
@@ -31,49 +33,75 @@ export function hoistLegacyVar(
       return; // don't go into functions
     }
 
-    if (node.type === "Identifier" && node.isReference === "reference") {
-      varsSeenBeforeDecl.add(node.name);
-    } else if (astIsBodyArrayHaver(node)) {
-      for (let i = 0; i < node.body.length; i++) {
-        const child = node.body[i];
+    if (astIsBodyArrayHaver(node)) {
+      const registerBindings = (vardecl: VariableDeclaration) => {
+        for (const id of astPatternAssignedBindings(
+          vardecl.declarations[0].id
+        )) {
+          if (!varDecls.has(id.name)) {
+            varDecls.set(id.name, structuredClone(id));
+          }
+        }
+      };
+
+      for (let { value: child, replace } of iterateReassignable(node.body)) {
+        /*
+        (always)
+        var x = 3 --> let x; ... x = 3
+       
+        var x = 3 --> let x = 3; (when possible)
+        */
         if (
           child.type === "VariableDeclaration" &&
           (child.kind as string) === "var"
         ) {
-          const loc = getLoc(child);
+          registerBindings(child);
 
-          const bindings = astPatternAssignedBindings(child.declarations[0].id);
-
-          // sometimes there's no need to convert
-          let everReferredTo = bindings.some((id) =>
-            varsSeenBeforeDecl.has(id.name)
+          replace(
+            astMakeExpressionStatement({
+              type: "AssignmentExpression",
+              operator: "=",
+              left: child.declarations[0].id,
+              right: child.declarations[0].init,
+              ...getLoc(child),
+            })
           );
-          let everDeclared = bindings.some((id) => varDecls.has(id.name));
-
-          if (!everReferredTo && !everDeclared && node === varScopeRoot) {
-            child.kind = "let";
-            bindings.forEach((id) => varDecls.set(id.name, null));
-          } else {
-            for (const id of bindings) {
-              if (!varDecls.has(id.name)) {
-                varDecls.set(id.name, structuredClone(id));
-              }
-            }
-            node.body[i] = {
-              type: "ExpressionStatement",
-              expression: {
-                type: "AssignmentExpression",
-                operator: "=",
-                left: child.declarations[0].id,
-                right: child.declarations[0].init,
-                ...loc,
-              },
-              ...loc,
-            };
-          }
         }
 
-        recurse(node.body[i]);
+        /*
+        for (var x of y) {} --> let x; ... for(x of y) {}
+        */
+        if (
+          (child.type === "ForInStatement" ||
+            child.type === "ForOfStatement") &&
+          child.left.type === "VariableDeclaration" &&
+          (child.left.kind as string) === "var"
+        ) {
+          registerBindings(child.left);
+
+          child.left = structuredClone(child.left.declarations[0].id);
+        }
+
+        /*
+         * for (var i = 0; ...) --> let i; ... for (i = 0)
+         */
+        if (
+          child.type === "ForStatement" &&
+          child.init?.type === "VariableDeclaration" &&
+          (child.init.kind as string) === "var"
+        ) {
+          registerBindings(child.init);
+
+          child.init = {
+            type: "AssignmentExpression",
+            operator: "=",
+            left: child.init.declarations[0].id,
+            right: child.init.declarations[0].init,
+            ...getLoc(child),
+          };
+        }
+
+        recurse(child);
       }
     } else {
       for (const child of astNaiveChildren(node)) {
@@ -83,34 +111,11 @@ export function hoistLegacyVar(
   })(varScopeRoot);
 
   if (varDecls.size) {
-    const asLet: VariableDeclaration[] = [...varDecls.values()].flatMap(
-      (ident) => {
-        if (!ident) return [];
+    const asLet = [...varDecls.values()].flatMap((id) => {
+      if (paramNames.includes(id.name)) return [];
 
-        const loc = getLoc(ident);
-        return astPatternAssignedBindings(ident).map((id) => {
-          return {
-            type: "VariableDeclaration",
-            kind: "let",
-            declarations: [
-              {
-                type: "VariableDeclarator",
-                id: structuredClone(id),
-                init: {
-                  type: "Identifier",
-                  name: "undefined",
-                  uniqueName: "undefined@global",
-                  isReference: "reference",
-                  ...loc,
-                },
-                ...loc,
-              },
-            ],
-            ...loc,
-          } as VariableDeclaration;
-        });
-      }
-    );
+      return astMakeLet(id, structuredClone(id), astMakeUndefined(id));
+    });
 
     varScopeRoot.body.unshift(...asLet);
   }

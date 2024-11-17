@@ -11,20 +11,22 @@ import { normalizeLabels } from "./labels";
 import { Program } from "../augmented-ast";
 import { removeFunctionsFromExpressions } from "./remove-functions-from-expressions";
 import { ensureBlocks } from "./ensure-blocks";
+import { explicitLabels } from "./explicit-labels";
 
 export function normalizeAll(program: Program) {
   // Most basic AST shape, optional values
   ensureBlocks(program);
   normalizeLabels(program);
+  explicitLabels(program);
   normalizeBareReturns(program);
   normalizeArrowFunctions(program);
 
   // Move variables around
+  hoistLegacyVar(program);
   normalizeVariableDeclarations(program);
   normalizeHoistedFunctions(program);
   removeFunctionsFromExpressions(program);
   normalizeMarkReferences(program);
-  hoistLegacyVar(program);
 
   // Mark all identifiers with .uniqueName
   uniqueifyNames(program);

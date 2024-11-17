@@ -59,10 +59,7 @@ export function normalizeVariableDeclarations(ast: Program) {
   function recurse(node: AnyNode2) {
     if (astIsBodyArrayHaver(node)) {
       intersperseVariableDeclarations(node.body);
-    } else if (
-      node.type === "ClassExpression" ||
-      node.type === "ClassDeclaration"
-    ) {
+    } else if (node.type === "ClassExpression") {
       for (const bod of node.body.body) {
         if (bod.type === "StaticBlock") {
           intersperseVariableDeclarations(bod.body);

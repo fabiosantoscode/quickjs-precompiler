@@ -80,9 +80,9 @@ function testClosures(code: string) {
 it("takes note of all closures", () => {
   expect(
     testClosures(`
-      var foo = function foo() { return foo }
-      var bar = function bar() {
-        var foo = function foo() { }
+      let foo = function foo() { return foo }
+      let bar = function bar() {
+        let foo = function foo() { }
         return foo()
       }
     `)

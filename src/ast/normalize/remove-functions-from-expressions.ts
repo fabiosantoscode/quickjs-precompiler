@@ -1,4 +1,5 @@
 import { getLoc, iterateReassignable } from "../../utils";
+import { astMakeConst } from "../ast-make";
 import {
   astIsBodyArrayHaver,
   astNaiveChildrenReassignable,
@@ -6,6 +7,7 @@ import {
 } from "../ast-traversal";
 import {
   AnyNode,
+  Identifier,
   Program,
   StatementOrDeclaration,
   VariableDeclaration,
@@ -46,34 +48,17 @@ function doNotBody(
   for (const { value: child, replace } of astNaiveChildrenReassignable(node)) {
     if (isFunction(child)) {
       const hygienicName = names.create(child.id?.name);
-      const loc = getLoc(child);
-      foundFunctions.push({
-        type: "VariableDeclaration",
-        kind: "const",
-        declarations: [
-          {
-            type: "VariableDeclarator",
-            id: {
-              type: "Identifier",
-              name: hygienicName,
-              uniqueName: "",
-              isReference: "declaration",
-              ...loc,
-            },
-            init: child,
-            ...loc,
-          },
-        ],
-        ...loc,
-      });
 
-      replace({
+      const id: Identifier = {
         type: "Identifier",
         name: hygienicName,
         uniqueName: "",
-        isReference: "reference",
-        ...loc,
-      });
+        isReference: undefined,
+        ...getLoc(child),
+      };
+      foundFunctions.push(astMakeConst(child, id, child));
+
+      replace(structuredClone(id));
     }
 
     doNotBody(names, child, foundFunctions);

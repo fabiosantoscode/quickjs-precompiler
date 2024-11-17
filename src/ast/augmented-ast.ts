@@ -56,7 +56,7 @@ export interface Identifier extends Node {
 
 export interface Literal extends Node {
   type: "Literal";
-  value?: string | boolean | null | number | RegExp | bigint;
+  value: string | boolean | null | number | RegExp | bigint; // AUGMENTED: value always present
   raw?: string;
   regex?: {
     pattern: string;
@@ -124,12 +124,12 @@ export interface LabeledStatement extends Node {
 
 export interface BreakStatement extends Node {
   type: "BreakStatement";
-  label?: Identifier | null;
+  label: Identifier; // AUGMENTED: always present
 }
 
 export interface ContinueStatement extends Node {
   type: "ContinueStatement";
-  label?: Identifier | null;
+  label: Identifier; // AUGMENTED: always present
 }
 
 export interface IfStatement extends Node {
@@ -172,12 +172,12 @@ export interface CatchClause extends Node {
 export interface WhileStatement extends Node {
   type: "WhileStatement";
   test: Expression;
-  body: Statement;
+  body: BlockStatement; // AUGMENTED: always a block
 }
 
 export interface DoWhileStatement extends Node {
   type: "DoWhileStatement";
-  body: Statement;
+  body: BlockStatement; // AUGMENTED: always a block
   test: Expression;
 }
 
@@ -186,14 +186,14 @@ export interface ForStatement extends Node {
   init?: VariableDeclaration | Expression | null;
   test?: Expression | null;
   update?: Expression | null;
-  body: Statement;
+  body: BlockStatement; // AUGMENTED: always a block
 }
 
 export interface ForInStatement extends Node {
   type: "ForInStatement";
   left: VariableDeclaration | Pattern;
   right: Expression;
-  body: Statement;
+  body: BlockStatement; // AUGMENTED: always a block
 }
 
 /* AUGMENTED: these are turned into let
@@ -264,7 +264,7 @@ export type UnaryOperator =
 export interface UpdateExpression extends Node {
   type: "UpdateExpression";
   operator: UpdateOperator;
-  argument: Expression;
+  argument: Pattern; // AUGMENTED: we can only update patterns here
   prefix: boolean;
 }
 
@@ -372,7 +372,7 @@ export interface ForOfStatement extends Node {
   type: "ForOfStatement";
   left: VariableDeclaration | Pattern;
   right: Expression;
-  body: Statement;
+  body: BlockStatement; // AUGMENTED: always a block
   await: boolean;
 }
 
@@ -467,10 +467,11 @@ export interface MethodDefinition extends Node {
   static: boolean;
 }
 
+/* AUGMENTED: removed
 export interface ClassDeclaration extends Class {
   type: "ClassDeclaration";
   id: Identifier;
-}
+} */
 
 export interface ClassExpression extends Class {
   type: "ClassExpression";
@@ -536,7 +537,8 @@ export interface ExportDefaultDeclaration extends Node {
   type: "ExportDefaultDeclaration";
   declaration: // AUGMENTED: removed | AnonymousFunctionDeclaration
   // AUGMENTED: removed | FunctionDeclaration
-  AnonymousClassDeclaration | ClassDeclaration | Expression;
+  // AUGMENTED: removed | ClassDeclaration
+  AnonymousClassDeclaration | Expression;
 }
 
 export interface ExportAllDeclaration extends Node {
@@ -607,7 +609,8 @@ export type Statement =
 
 export type Declaration =
   // AUGMENTED: removed | FunctionDeclaration
-  VariableDeclaration | ClassDeclaration;
+  VariableDeclaration;
+// AUGMENTED: removed | ClassDeclaration;
 
 export type Expression =
   | Identifier
@@ -760,7 +763,6 @@ export const statementTypes = new Set<StatementOrDeclaration["type"]>([
   "ForInStatement",
   "ForOfStatement",
   "VariableDeclaration",
-  "ClassDeclaration",
   "ImportDeclaration",
   "ExportNamedDeclaration",
   "ExportDefaultDeclaration",

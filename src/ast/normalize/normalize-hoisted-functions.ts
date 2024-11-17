@@ -1,6 +1,7 @@
 import { FunctionDeclaration } from "acorn";
 import { astIsBodyArrayHaver, astNaiveTraversal } from "../ast-traversal";
 import {
+  AnyNode,
   AnyNode2,
   BlockStatement,
   FunctionExpression,
@@ -10,6 +11,7 @@ import {
   VariableDeclaration,
 } from "../augmented-ast";
 import { defined, invariant } from "../../utils";
+import { astMakeConst } from "../ast-make";
 
 export function normalizeHoistedFunctions(
   root: StaticBlock | BlockStatement | Program
@@ -42,30 +44,13 @@ function hoist(bodyHaver: StaticBlock | BlockStatement | Program) {
 
   if (funcDecls.size) {
     const asVariables: VariableDeclaration[] = [...funcDecls].map((func) => {
-      const { start, end, loc, range } = func;
-      const id = defined(func.id) as Identifier;
-      return {
-        type: "VariableDeclaration",
-        kind: "const",
-        declarations: [
-          {
-            type: "VariableDeclarator",
-            id: structuredClone(id) as Identifier,
-            init: {
-              ...func,
-              type: "FunctionExpression",
-            } as FunctionExpression,
-            start,
-            end,
-            loc,
-            range,
-          },
-        ],
-        start,
-        end,
-        loc,
-        range,
-      } as VariableDeclaration;
+      const id = structuredClone(defined(func.id) as Identifier);
+      const newFunc = {
+        ...func,
+        type: "FunctionExpression",
+      } as FunctionExpression;
+
+      return astMakeConst(func as any as AnyNode, id, newFunc);
     });
 
     bodyHaver.body = [

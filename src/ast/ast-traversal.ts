@@ -268,7 +268,6 @@ export function* astRawTraversal(
     }
 
     // Classes, funcs
-    case "ClassDeclaration":
     case "ClassExpression": {
       invariant(false, "TODO");
       /*
@@ -626,10 +625,6 @@ export function* astRawTraversal(
 export function* astTraverseExitNodes(
   node: AnyNode2
 ): Generator<ReturnStatement | ThrowStatement> {
-  if (node.type === "ClassExpression" || node.type === "ClassDeclaration") {
-    invariant(false, "TODO");
-  }
-
   function* recurse(
     node: AnyNode2
   ): Generator<ReturnStatement | ThrowStatement> {
@@ -638,6 +633,8 @@ export function* astTraverseExitNodes(
         yield child;
       } else if (isFunction(child)) {
         // do not go into functions
+      } else if (node.type === "ClassExpression") {
+        invariant(false, "TODO");
       } else {
         yield* recurse(child);
       }

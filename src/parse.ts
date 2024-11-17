@@ -2,6 +2,7 @@ import * as acorn from "acorn";
 import * as astring from "astring";
 import type { Function, Program } from "./ast/augmented-ast";
 import { normalizeAll } from "./ast/normalize/all";
+import { validateAst } from "./ast/ast-validate";
 
 export interface Options {
   sourceFile?: string;
@@ -20,6 +21,8 @@ export function parseJsFile(
   }) as Program;
 
   normalizeAll(program);
+
+  validateAst(program);
 
   return program;
 }

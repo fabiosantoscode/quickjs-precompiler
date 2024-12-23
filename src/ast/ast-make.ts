@@ -5,6 +5,7 @@ import {
   Expression,
   ExpressionStatement,
   Identifier,
+  isExpression,
   Pattern,
   Statement,
   VariableDeclaration,
@@ -30,13 +31,19 @@ export function astMakeExpressionStatement(
   };
 }
 
-export function astMakeBlockOfOne(statement: Statement): BlockStatement {
+export function astMakeBlockOfOne(
+  statement: Statement | Expression
+): BlockStatement {
   if (statement.type === "BlockStatement") {
     return statement;
   }
   return {
     type: "BlockStatement",
-    body: [statement],
+    body: [
+      isExpression(statement)
+        ? astMakeExpressionStatement(statement)
+        : statement,
+    ],
     ...getLoc(statement),
   };
 }

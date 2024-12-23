@@ -1,8 +1,7 @@
-import { mkdtemp, readFile, writeFile } from "fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "fs/promises";
 import { simpleSpawn } from "./simple-spawn";
 import { join } from "path";
 import { tmpdir } from "os";
-import { rimraf } from "rimraf";
 
 export type Bytecode = {
   cSource: string;
@@ -34,7 +33,7 @@ export async function jsToBytecode(
     const cSource = await readFile(file_c, "utf-8");
     return { cSource, bytecodeName, bytecodeSize: bytecodeName + "_size" };
   } finally {
-    await rimraf(tmpDir);
+    await rm(tmpDir, { recursive: true });
   }
 }
 

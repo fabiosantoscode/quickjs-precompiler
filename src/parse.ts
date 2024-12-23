@@ -1,6 +1,6 @@
 import * as acorn from "acorn";
 import * as astring from "astring";
-import type { Function, Program } from "./ast/augmented-ast";
+import type { BlockStatement, Function, Program } from "./ast/augmented-ast";
 import { normalizeAll } from "./ast/normalize/all";
 import { validateAst } from "./ast/ast-validate";
 
@@ -28,5 +28,9 @@ export function parseJsFile(
 }
 
 export function stringifyJsFile(source: Program | Function) {
+  return astring.generate(source).trimEnd();
+}
+
+export function stringifyJsBlock(source: BlockStatement) {
   return astring.generate(source).trimEnd();
 }

@@ -159,7 +159,7 @@ export function* astRawTraversal(
           else if (goThrough.expressions) yield* through(thing.object);
         }
 
-        if (!thing.computed && thing.property.type !== "PrivateIdentifier") {
+        if (thing.computed && thing.property.type !== "PrivateIdentifier") {
           if (goInto.expressions) yield thing.property;
           else if (goThrough.expressions) yield* through(thing.property);
         }

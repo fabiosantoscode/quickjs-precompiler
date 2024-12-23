@@ -1,4 +1,4 @@
-import { invariant, maparrayPush } from "../utils";
+import { asInstance, invariant, maparrayPush } from "../utils";
 import {
   astNaiveTraversal,
   astTraverseExitNodes,
@@ -24,6 +24,7 @@ import {
   NumericType,
   StringType,
   Type,
+  typeUnion,
   TypeVariable,
   UndefinedType,
 } from "./type";
@@ -72,8 +73,8 @@ function pass0AssignTypeVariables(env: TypeEnvironment, program: Program) {
   for (const node of astNaiveTraversal(program)) {
     if (node.type === "Identifier") {
       if (node.isReference) {
-        const inClosure = env.getBindingType(node.uniqueName);
         invariant(node.uniqueName);
+        const inClosure = env.getBindingType(node.uniqueName);
         env.setNodeType(node, inClosure);
       }
     } else if (isExpression(node)) {
@@ -88,7 +89,8 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
     if (isExpression(node)) {
       /** When you just know that the type is for example NumberType, or equal to another node's type */
       const just = (theType: Type) => {
-        env.getNodeType(node).type = theType;
+        invariant(env.getNodeType(node) === undefined);
+        env.getNodeTypeVar(node).type = theType;
       };
 
       switch (node.type) {
@@ -309,7 +311,7 @@ function pass2MarkAssignments(env: TypeEnvironment, program: Program) {
 
       const { left, right, operator, isConstant } = asAssignmentLike;
 
-      const possibility = env.getNodeType(right);
+      const possibility = env.getNodeTypeVar(right);
 
       /* TODO treat const differently
       if (isConstant) {
@@ -335,10 +337,10 @@ function pass3MarkDependentTypes(env: TypeEnvironment, program: Program) {
         comment: string,
         typeBack: TypeBack
       ) => {
-        const target = env.getNodeType(node);
+        const target = env.getNodeTypeVar(node);
         invariant(target);
         const dependencies = dependsOn.map((t) => {
-          const tVar = t instanceof TypeVariable ? t : env.getNodeType(t);
+          const tVar = t instanceof TypeVariable ? t : env.getNodeTypeVar(t);
           invariant(tVar);
           return tVar;
         });
@@ -460,6 +462,13 @@ function pass3MarkDependentTypes(env: TypeEnvironment, program: Program) {
           break;
         }
         case "AssignmentExpression": {
+          if (node.operator === "=" && node.left.type === "Identifier") {
+            depends(
+              [env.getBindingType(node.left.uniqueName)],
+              "return value of assignment expr",
+              ([bindingType]) => bindingType
+            );
+          }
           break;
         }
         case "LogicalExpression": {
@@ -530,7 +539,7 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
         : isFunction(node.callee)
         ? node.callee
         : undefined;
-    const tVar = funcNode && env.getNodeType(funcNode as any);
+    const tVar = funcNode && env.getNodeTypeVar(funcNode as any);
 
     if (!funcNode || !tVar) continue;
 
@@ -538,8 +547,10 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
   }
 
   for (const func of calls.keys()) {
-    const tVarFunc = env.getNodeType(func as FunctionExpression);
-    invariant(tVarFunc?.type instanceof FunctionType);
+    const tFunc = asInstance(
+      env.getNodeType(func as FunctionExpression),
+      FunctionType
+    );
     const callExprNodes = defined(calls.get(func));
 
     let quit = false;
@@ -565,20 +576,22 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
       }
 
       for (let paramI = 0; paramI < func.params.length; paramI++) {
-        argTVars[paramI].push(env.getNodeType(callExpr.arguments[paramI]));
+        argTVars[paramI].push(env.getNodeTypeVar(callExpr.arguments[paramI]));
       }
     }
 
     if (quit) continue;
 
     // ARG TYPES
+    invariant(tFunc.params == null);
+    tFunc.params = [];
+
     for (const [argName, passedArgs] of zip(paramUniqueNames, argTVars)) {
       if (!passedArgs.every((d) => d != null)) {
         continue; // some were unknown
       }
-      // TODO addVarDependentTypes already supports multiple possibilities. Maybe we don't have to do as much here?
 
-      // params already have a type dependency here
+      tFunc.params.push(env.getBindingType(argName));
 
       const dep = env.getTypeDependency(env.getBindingType(argName));
       invariant(dep instanceof TypeDependencyBindingAssignments);
@@ -605,24 +618,29 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
         "TODO normalize plain return to `return undefined`"
       );
 
-      return env.getNodeType(node.argument);
+      return env.getNodeTypeVar(node.argument);
     });
 
-    const tVarRet = (tVarFunc.type as FunctionType).returns;
-    env.addTypeDependency(
-      new TypeDependencyReturnType(
-        "the function's return value depends on the tVars of return statements",
-        tVarRet,
-        exitTVars
-      )
-    );
+    const tVarRet = (tFunc as FunctionType).returns;
+    if (exitTVars.length) {
+      env.addTypeDependency(
+        new TypeDependencyReturnType(
+          "the function's return value depends on the tVars of return statements",
+          tVarRet,
+          exitTVars
+        )
+      );
+    } else {
+      // No `return`
+      tVarRet.type = new UndefinedType();
+    }
 
     // MAPPING THE RET TYPE TO THE CALLS
     for (const call of callExprNodes) {
       env.addTypeDependency(
         new TypeDependencyCopyReturnToCall(
           "copy the function ret into the callsite",
-          env.getNodeType(call),
+          env.getNodeTypeVar(call),
           tVarRet
         )
       );
@@ -632,6 +650,15 @@ function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
 
 function pass5PumpDependencies(env: TypeEnvironment, _program: Program) {
   const allDeps = env.getAllTypeDependencies();
+
+  invariant(
+    new Set([...allDeps].map((dep) => dep.target)).size === allDeps.size,
+    "every target has at most one TypeDependency pointing to it"
+  );
+  invariant(
+    [...allDeps].every((dep) => dep.target.type === undefined),
+    "every dependency target type is as-of-yet unknown"
+  );
 
   for (let pass = 0; pass < 2000000; pass++) {
     let anyProgress = false;
@@ -646,10 +673,11 @@ function pass5PumpDependencies(env: TypeEnvironment, _program: Program) {
       if (type) {
         if (!dep.target.type) {
           dep.target.type = type;
-        } else if (dep.target.type.extends(type)) {
-          dep.target.type = type;
         } else {
-          invariant(false, "TODO: should never occur?");
+          invariant(false, "TODO test progressive type refinement");
+          // TODO we should use union here?
+          // dep.target.type = typeUnion(dep.target.type, type);
+          // invariant(dep.target.type, "type union unsuccessful")
         }
       }
     }

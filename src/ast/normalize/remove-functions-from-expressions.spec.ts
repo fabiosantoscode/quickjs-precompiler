@@ -10,7 +10,7 @@ it("removes functions from expressions", () => {
 
   expect(stringifyJsFile(program)).toMatchInlineSnapshot(`
     "let unmoved = () => {};
-    const inlineFunc_1_nameHint = function nameHint() {};
-    let moved = inlineFunc_1_nameHint();"
+    const inlineFunc_nameHint = function nameHint() {};
+    let moved = inlineFunc_nameHint();"
   `);
 });

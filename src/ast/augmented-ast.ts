@@ -662,10 +662,7 @@ export type ExpressionOrStatement =
   | Statement;
 
 // AUGMENTED
-export type StatementOrDeclaration =
-  | Declaration
-  | ModuleDeclaration
-  | Statement;
+export type StatementOrDeclaration = ModuleDeclaration | Statement;
 
 export type AnyNode =
   | Statement

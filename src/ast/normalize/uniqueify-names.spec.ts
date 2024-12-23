@@ -1,5 +1,5 @@
 import { parseJsFile, stringifyJsFile } from "../../parse";
-import { testRevealUniqueNames } from "../test-utils";
+import { testRevealUniqueNames } from "../../testutils";
 
 function testUniqueNames(inp: string) {
   const program = parseJsFile(inp); // calls uniqueifyNames() internally

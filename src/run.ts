@@ -1,8 +1,7 @@
-import { mkdtemp } from "fs/promises";
+import { mkdtemp, rm } from "fs/promises";
 import { simpleSpawn } from "./simple-spawn";
 import { Readable } from "stream";
 import { tmpdir } from "os";
-import { rimraf } from "rimraf";
 import { join } from "path";
 
 export async function compileAndRunC(
@@ -21,7 +20,7 @@ export async function compileAndRunC(
     const stdout = await simpleSpawn(exeFile, args, { stdin, timeout });
     return stdout;
   } finally {
-    await rimraf(folder);
+    await rm(folder, { recursive: true });
   }
 }
 

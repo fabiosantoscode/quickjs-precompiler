@@ -29,14 +29,21 @@ export class HygienicNames {
 
   create(suggestName?: string) {
     let pfx = this.prefix;
-    let suffix = suggestName ? "_" + suggestName : "";
+    let suffix = suggestName ? suggestName + "_" : "";
 
-    do {
-      var unique = pfx + this.counter++ + suffix;
-    } while (this.isUniqueNameTaken(unique));
+    let ret;
 
-    this.addTaken(unique);
-    return unique;
+    if (suggestName && !this.isUniqueNameTaken(pfx + suggestName)) {
+      ret = pfx + suggestName;
+    } else {
+      do {
+        ret = pfx + suffix + this.counter++;
+      } while (this.isUniqueNameTaken(ret));
+    }
+
+    this.addTaken(ret);
+
+    return ret;
   }
 
   private addTaken(unique: string) {

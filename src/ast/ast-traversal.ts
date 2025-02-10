@@ -196,9 +196,6 @@ export function* astRawTraversal(
       yield* ast.body;
       return;
     }
-    case "WithStatement": {
-      invariant(false);
-    }
     case "LabeledStatement": {
       yield ast.body;
       return;
@@ -590,9 +587,6 @@ export function* astRawTraversal(
       if (goInto.labels && ast.label) yield ast.label;
       return;
     }
-    case "EmptyStatement": {
-      return;
-    }
     case "ExpressionStatement": {
       if (goInto.expressions) yield ast.expression;
       else if (goThrough.expressions) yield* through(ast.expression);
@@ -696,9 +690,10 @@ export function* astNaiveChildrenReassignable(
 
 export function isFunction(item: AnyNode): item is Function {
   return (
-    (item.type as string) === "FunctionDeclaration" ||
-    item.type === "FunctionExpression" ||
-    item.type === "ArrowFunctionExpression"
+    item != null &&
+    ((item.type as string) === "FunctionDeclaration" ||
+      item.type === "FunctionExpression" ||
+      item.type === "ArrowFunctionExpression")
   );
 }
 

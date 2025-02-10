@@ -1,21 +1,13 @@
-import { getLoc, invariant, iterateReassignable } from "../../utils";
-import { astMakeBlockOfOne } from "../ast-make";
-import { astNaiveChildrenReassignable } from "../ast-traversal";
-import { AnyNode, isStatement, Program, Statement } from "../augmented-ast";
-import { HygienicNames } from "../hygienic-names";
+import { getLoc, invariant } from "../../utils";
+import { astNaiveChildren } from "../ast-traversal";
+import { AnyNode, isLoop, Program } from "../augmented-ast";
 
 /** Make implicit labels (`break;` and `continue;` without a label) become explicit */
 export function explicitLabels(root: Program) {
-  const names = HygienicNames.forProgram(root, "autoLabel_");
-
   let obviousBreak = "";
   let obviousContinue = "";
 
-  function onNode(
-    node: AnyNode,
-    parent: AnyNode,
-    replace: (newNode: any) => void
-  ) {
+  function onNode(node: AnyNode, parent: AnyNode) {
     switch (node.type) {
       case "BreakStatement": {
         if (!node.label) {
@@ -88,20 +80,20 @@ export function explicitLabels(root: Program) {
       }
       case "LabeledStatement": {
         // labels are indirect parents. let's pass through the parent
-        invariant(node.body.type === "BlockStatement");
+        if (node.body.type === "BlockStatement") {
+          for (const child of node.body.body) {
+            onNode(child, node);
+          }
+        } else {
+          invariant(isLoop(node.body));
 
-        for (const { value: child, replace } of iterateReassignable(
-          node.body.body
-        )) {
-          onNode(child, node, replace);
+          onNode(node.body, node);
         }
         return;
       }
       default: {
-        for (const { value: child, replace } of astNaiveChildrenReassignable(
-          node
-        )) {
-          onNode(child, node, replace);
+        for (const child of astNaiveChildren(node)) {
+          onNode(child, node);
         }
         return;
       }
@@ -109,36 +101,18 @@ export function explicitLabels(root: Program) {
 
     function descend(child?: AnyNode | null) {
       if (child != null) {
-        onNode(child, node, () => {
-          invariant(false, "we should never have statements here");
-        });
+        onNode(child, node);
       }
     }
 
     function explicitifyBreakLabel(parentNode: AnyNode) {
-      if (parentNode.type === "LabeledStatement") {
-        return parentNode.label.name;
-      } else {
-        invariant(isStatement(node));
-        const name = names.create();
-        replace({
-          type: "LabeledStatement",
-          label: {
-            type: "Identifier",
-            name,
-            uniqueName: "",
-            isReference: undefined,
-            ...getLoc(node),
-          },
-          body: astMakeBlockOfOne(node as Statement),
-          ...getLoc(node),
-        });
-        return name;
-      }
+      invariant(isLoop(node));
+      invariant(parentNode.type === "LabeledStatement");
+      return parentNode.label.name;
     }
   }
 
-  for (const { value: item, replace } of iterateReassignable(root.body)) {
-    onNode(item, root, replace);
+  for (const item of root.body) {
+    onNode(item, root);
   }
 }

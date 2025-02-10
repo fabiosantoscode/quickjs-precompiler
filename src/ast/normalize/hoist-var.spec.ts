@@ -57,9 +57,7 @@ it("hoists var decls", () => {
     `)
   ).toMatchInlineSnapshot(`
     "let variable = undefined;
-    autoLabel_1: {
-      for (variable of []) {}
-    }"
+    autoLabel_1: for (variable of []) {}"
   `);
 
   expect(
@@ -68,9 +66,7 @@ it("hoists var decls", () => {
     `)
   ).toMatchInlineSnapshot(`
     "let i = undefined;
-    autoLabel_1: {
-      for (i = 0; i < [].length; i++) {}
-    }"
+    autoLabel_1: for (i = 0; i < [].length; i++) {}"
   `);
 });
 

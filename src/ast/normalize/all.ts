@@ -12,9 +12,11 @@ import { Program } from "../augmented-ast";
 import { removeFunctionsFromExpressions } from "./remove-functions-from-expressions";
 import { ensureBlocks } from "./ensure-blocks";
 import { explicitLabels } from "./explicit-labels";
+import { emptyStatements } from "./empty-statements";
 
 export function normalizeAll(program: Program) {
   // Most basic AST shape, optional values
+  emptyStatements(program);
   ensureBlocks(program);
   normalizeLabels(program);
   explicitLabels(program);

@@ -10,7 +10,10 @@ const typeEnvs = new WeakMap<Program, TypeEnvironment>();
 export class TypeEnvironment {
   static forProgram(program: Program, mustExist = false) {
     return mapGetOrDefault(typeEnvs, program, () => {
-      invariant(!mustExist);
+      invariant(
+        !mustExist,
+        "no TypeEnvironment exists for program, and mustExist was passed"
+      );
       const env = new TypeEnvironment();
       propagateTypes(env, program);
       return env;
@@ -31,7 +34,7 @@ export class TypeEnvironment {
     })
   );
   #knownBindings = new Set(this.#bindingVars.keys());
-  #typeDependencies = new Map<TypeVariable, TypeDependency>();
+  #typeDependencies = new Map<TypeVariable, TypeDependency[]>();
 
   getNodeType(node: AnyNode) {
     return defined(this.#typeVars.get(node)).type;
@@ -39,15 +42,15 @@ export class TypeEnvironment {
   getNodeTypeVar(node: AnyNode) {
     return defined(this.#typeVars.get(node));
   }
-  setNodeType(node: AnyNode, tVar: TypeVariable) {
+  setNodeTypeVar(node: AnyNode, tVar: TypeVariable) {
     invariant(!this.#typeVars.has(node));
     this.#typeVars.set(node, tVar);
   }
 
-  getBindingType(uniqueName: string) {
+  getBindingTypeVar(uniqueName: string) {
     return defined(this.#bindingVars.get(uniqueName));
   }
-  setBindingType(uniqueName: string, tVar: TypeVariable) {
+  setBindingTypeVar(uniqueName: string, tVar: TypeVariable) {
     if (this.#knownBindings.has(uniqueName)) {
       return; // undefined, globalThis, etc. Cannot be reassigned.
     }
@@ -56,19 +59,39 @@ export class TypeEnvironment {
   }
 
   addTypeDependency(dependency: TypeDependency) {
-    invariant(
-      !this.#typeDependencies.has(dependency.target),
-      "dependency already exists"
-    );
-
-    this.#typeDependencies.set(dependency.target, dependency);
+    if (!this.#typeDependencies.has(dependency.target)) {
+      this.#typeDependencies.set(dependency.target, [dependency]);
+    } else {
+      this.#typeDependencies.get(dependency.target)!.push(dependency);
+    }
   }
 
-  getTypeDependency(key: TypeVariable) {
-    return this.#typeDependencies.get(key);
+  getTypeDependencies(byTarget: TypeVariable | AnyNode) {
+    if (byTarget instanceof TypeVariable) {
+      return this.#typeDependencies.get(byTarget);
+    } else {
+      return this.#typeDependencies.get(this.getNodeTypeVar(byTarget));
+    }
+  }
+
+  getTypeDependents(byTarget: TypeVariable) {
+    // TODO if this function gets used in the end, cache this lookup
+    const out: TypeDependency[] = [];
+    for (const depSet of this.#typeDependencies.values()) {
+      for (const dep of depSet) {
+        if (dep.sources.includes(byTarget)) {
+          out.push(dep);
+        }
+      }
+    }
+    return out;
   }
 
   getAllTypeDependencies() {
     return new Set(this.#typeDependencies.values());
+  }
+
+  getAllTypeDependencies2(): ReadonlyMap<TypeVariable, TypeDependency[]> {
+    return this.#typeDependencies;
   }
 }

@@ -10,13 +10,17 @@ export class HygienicNames {
   prefix = "";
   takenNames: Set<string> | Set<string>[] = new Set();
 
-  private constructor() {}
+  private constructor(prefix: string) {
+    this.prefix = prefix;
+    invariant(prefix.endsWith("_"));
+  }
+
+  static forTestingPurposes(prefix: string) {
+    return new HygienicNames(prefix);
+  }
 
   static forProgram(program: Program, prefix: string) {
-    const ret = new HygienicNames();
-    ret.prefix = prefix;
-
-    invariant(prefix.endsWith("_"));
+    const ret = new HygienicNames(prefix);
 
     for (const node of astNaiveTraversal(program)) {
       if (node.type === "Identifier" && node.name.startsWith(prefix)) {

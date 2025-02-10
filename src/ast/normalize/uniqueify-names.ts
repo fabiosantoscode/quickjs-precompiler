@@ -294,6 +294,15 @@ class UniqueifyVisitor extends LocatedErrors {
         return;
       }
       // Pass-through nodes
+      case "NewExpression":
+      case "ConditionalExpression":
+      case "LogicalExpression":
+      case "SequenceExpression":
+      case "SwitchStatement":
+      case "TryStatement":
+      case "TemplateLiteral":
+      case "TemplateElement":
+      case "TaggedTemplateExpression":
       case "WhileStatement":
       case "DoWhileStatement":
       case "ArrayExpression":
@@ -317,7 +326,6 @@ class UniqueifyVisitor extends LocatedErrors {
         return;
       }
       // terminal nodes
-      case "EmptyStatement":
       case "DebuggerStatement":
       case "Literal": {
         return;

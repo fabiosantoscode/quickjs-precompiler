@@ -35,11 +35,11 @@ export function hoistLegacyVar(
 
     if (astIsBodyArrayHaver(node)) {
       const registerBindings = (vardecl: VariableDeclaration) => {
-        for (const id of astPatternAssignedBindings(
-          vardecl.declarations[0].id
-        )) {
-          if (!varDecls.has(id.name)) {
-            varDecls.set(id.name, structuredClone(id));
+        for (const declarator of vardecl.declarations) {
+          for (const id of astPatternAssignedBindings(declarator.id)) {
+            if (!varDecls.has(id.name)) {
+              varDecls.set(id.name, structuredClone(id));
+            }
           }
         }
       };
@@ -68,37 +68,40 @@ export function hoistLegacyVar(
           );
         }
 
-        /*
-        for (var x of y) {} --> let x; ... for(x of y) {}
-        */
-        if (
-          (child.type === "ForInStatement" ||
-            child.type === "ForOfStatement") &&
-          child.left.type === "VariableDeclaration" &&
-          (child.left.kind as string) === "var"
-        ) {
-          registerBindings(child.left);
+        if (child.type === "LabeledStatement") {
+          const loop = child.body;
+          /*
+          for (var x of y) {} --> let x; ... for(x of y) {}
+          */
+          if (
+            (loop.type === "ForInStatement" ||
+              loop.type === "ForOfStatement") &&
+            loop.left.type === "VariableDeclaration" &&
+            (loop.left.kind as string) === "var"
+          ) {
+            registerBindings(loop.left);
 
-          child.left = structuredClone(child.left.declarations[0].id);
-        }
+            loop.left = structuredClone(loop.left.declarations[0].id);
+          }
 
-        /*
-         * for (var i = 0; ...) --> let i; ... for (i = 0)
-         */
-        if (
-          child.type === "ForStatement" &&
-          child.init?.type === "VariableDeclaration" &&
-          (child.init.kind as string) === "var"
-        ) {
-          registerBindings(child.init);
+          /*
+           * for (var i = 0; ...) --> let i; ... for (i = 0)
+           */
+          if (
+            loop.type === "ForStatement" &&
+            loop.init?.type === "VariableDeclaration" &&
+            (loop.init.kind as string) === "var"
+          ) {
+            registerBindings(loop.init);
 
-          child.init = {
-            type: "AssignmentExpression",
-            operator: "=",
-            left: child.init.declarations[0].id,
-            right: child.init.declarations[0].init,
-            ...getLoc(child),
-          };
+            loop.init = {
+              type: "AssignmentExpression",
+              operator: "=",
+              left: loop.init.declarations[0].id,
+              right: loop.init.declarations[0].init,
+              ...getLoc(loop),
+            };
+          }
         }
 
         recurse(child);

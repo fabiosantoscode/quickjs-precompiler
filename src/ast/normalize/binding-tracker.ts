@@ -70,7 +70,7 @@ export class BindingTracker extends LocatedErrors {
 
     switch (node.type) {
       case "Identifier": {
-        // the rest of the code should ensure no non-reference identifiers get here
+        // the rest of the code will handle all non-reference identifiers
         invariant(node.isReference === "reference", node.uniqueName);
         this.countRef(node);
         return;
@@ -254,11 +254,11 @@ export class BindingTracker extends LocatedErrors {
         return;
       }
       // Pass-through
+      case "UnaryExpression":
       case "ChainExpression":
       case "ImportExpression":
       case "ExpressionStatement":
       case "BlockStatement":
-      case "WithStatement":
       case "ThrowStatement":
       case "ReturnStatement":
       case "IfStatement":
@@ -274,7 +274,6 @@ export class BindingTracker extends LocatedErrors {
         break;
       }
       // no children
-      case "EmptyStatement":
       case "DebuggerStatement":
       case "ThisExpression":
       case "MetaProperty": {

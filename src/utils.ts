@@ -50,7 +50,7 @@ export function maparrayDelete<K, V>(
   }
 }
 
-export function defined<T>(maybeUndef: T | undefined | null): T {
+export function defined<T>(maybeUndef: T | void | undefined | null): T {
   if (maybeUndef === null || maybeUndef === undefined) {
     const e = new Error("Expected defined value, got " + maybeUndef);
     Error.captureStackTrace(e, defined);
@@ -132,11 +132,44 @@ export function invariant(
   }
 }
 
+export function todo(
+  msg: (() => string) | string = "Not implemented",
+  atFunction: Function = todo
+): never {
+  const e = new Error(typeof msg === "function" ? msg() : msg);
+  Error.captureStackTrace(e, atFunction);
+  throw e;
+}
+
+export function unreachable(msg = "Unreachable"): never {
+  const e = new Error(msg);
+  Error.captureStackTrace(e, unreachable);
+  throw e;
+}
+
 export function* zip<T1, T2>(t1: T1[], t2: T2[]): Iterable<[T1, T2]> {
   for (let i = 0; i < t1.length; i++) {
     for (let j = 0; j < t2.length; j++) {
       yield [t1[i], t2[j]];
     }
+  }
+}
+
+export function* withLast<T>(arr: Array<T>): Iterable<[boolean, T]> {
+  for (let i = 0; i < arr.length; i++) {
+    if (i === arr.length - 1) {
+      yield [true, arr[i]];
+    } else {
+      yield [false, arr[i]];
+    }
+  }
+}
+
+export function* enumerate<T>(arr: Iterable<T>): Iterable<[number, T]> {
+  let i = 0;
+  for (const it of arr) {
+    yield [i, it];
+    i += 1;
   }
 }
 

@@ -1,10 +1,13 @@
 import { isFunction } from "./ast-traversal";
 import {
+  AnyNode,
+  AnyNode2,
   CallExpression,
   Expression,
   ForOfStatement,
   Function,
   isExpression,
+  isLoop,
   isStatement,
   Pattern,
   Program,
@@ -25,13 +28,13 @@ class AstValidator extends LocatedErrors {
   }
 
   validateProgram() {
-    this.validateStatements(this.program.body);
+    this.validateStatements(this.program.body, this.program);
   }
 
   validateFunction(func: Function) {
     if (func.id) this.validatePattern(func.id);
     this.validatePattern(func.params);
-    this.validateStatement(func.body);
+    this.validateStatement(func.body, func);
 
     this.invariantAt(
       func,
@@ -41,11 +44,14 @@ class AstValidator extends LocatedErrors {
     this.invariantAt(func, !func.async, "async functions are unsupported");
   }
 
-  validateStatements(stat: StatementOrDeclaration[]) {
-    stat.forEach((stat) => this.validateStatement(stat));
+  validateStatements(
+    stat: StatementOrDeclaration[],
+    parent: StatementOrDeclaration | Program
+  ) {
+    stat.forEach((child) => this.validateStatement(child, parent));
   }
 
-  validateStatement(stat: StatementOrDeclaration) {
+  validateStatement(stat: StatementOrDeclaration, parent: AnyNode) {
     this.invariantAt(stat, isStatement(stat));
 
     switch (stat.type) {
@@ -54,16 +60,13 @@ class AstValidator extends LocatedErrors {
         break;
       }
       case "BlockStatement": {
-        this.validateStatements(stat.body);
-        break;
-      }
-      case "EmptyStatement": {
+        this.validateStatements(stat.body, stat);
         break;
       }
       case "DebuggerStatement": {
         break;
       }
-      case "WithStatement": {
+      case "WithStatement" as string: {
         this.borkAt(stat, "with statement not supported");
         break;
       }
@@ -78,12 +81,12 @@ class AstValidator extends LocatedErrors {
       case "LabeledStatement": {
         this.invariantAt(
           stat,
-          stat.body.type === "BlockStatement",
-          "labeled statement can only have BlockStatement inside"
+          stat.body.type === "BlockStatement" || isLoop(stat.body),
+          "labeled statement can only have BlockStatement or loops inside"
         );
         this.invariantAt(stat, stat.label.uniqueName);
         this.labels.add(stat.label.uniqueName);
-        this.validateStatement(stat.body);
+        this.validateStatement(stat.body, stat);
         this.labels.delete(stat.label.uniqueName);
         break;
       }
@@ -117,10 +120,10 @@ class AstValidator extends LocatedErrors {
         this.validateExpression(stat.test);
 
         this.invariantAt(stat, stat.consequent.type === "BlockStatement");
-        this.validateStatement(stat.consequent);
+        this.validateStatement(stat.consequent, stat);
         if (stat.alternate) {
           this.invariantAt(stat, stat.alternate.type === "BlockStatement");
-          this.validateStatement(stat.alternate);
+          this.validateStatement(stat.alternate, stat);
         }
         break;
       }
@@ -134,23 +137,26 @@ class AstValidator extends LocatedErrors {
       }
       case "WhileStatement":
       case "DoWhileStatement": {
+        this.validateLoopParent(stat, parent);
         this.invariantAt(stat, stat.body.type === "BlockStatement");
-        this.validateStatement(stat.body);
+        this.validateStatement(stat.body, stat);
         this.validateExpression(stat.test);
         break;
       }
       case "ForStatement": {
+        this.validateLoopParent(stat, parent);
         this.invariantAt(stat, stat.body.type === "BlockStatement");
         this.invariantAt(stat, stat.init == null || isExpression(stat.init));
 
         stat.init && this.validateExpression(stat.init);
         stat.test && this.validateExpression(stat.test);
         stat.update && this.validateExpression(stat.update);
-        this.validateStatement(stat.body);
+        this.validateStatement(stat.body, stat);
         break;
       }
       case "ForInStatement":
       case "ForOfStatement": {
+        this.validateLoopParent(stat, parent);
         this.invariantAt(
           stat,
           stat.left.type !== "VariableDeclaration",
@@ -160,7 +166,7 @@ class AstValidator extends LocatedErrors {
         this.validatePattern(stat.left);
         this.invariantAt(stat, !(stat as ForOfStatement).await);
         this.invariantAt(stat, stat.body.type === "BlockStatement");
-        this.validateStatement(stat.body);
+        this.validateStatement(stat.body, stat);
         break;
       }
       case "ImportDeclaration": {
@@ -248,7 +254,16 @@ class AstValidator extends LocatedErrors {
         break;
       }
       case "UnaryExpression": {
-        this.borkAt(expr, "TODO");
+        const operators = ["~", "-"];
+        this.invariantAt(
+          expr,
+          operators.includes(expr.operator),
+          () =>
+            "UnaryExpression operator can only be " +
+            JSON.stringify(operators) +
+            ", was " +
+            expr.operator
+        );
         break;
       }
       case "UpdateExpression": {
@@ -287,7 +302,11 @@ class AstValidator extends LocatedErrors {
         break;
       }
       case "LogicalExpression": {
-        this.borkAt(expr, "TODO");
+        this.invariantAt(
+          expr,
+          expr.operator === "||" || expr.operator === "&&",
+          "nullish-coalescing operator not supported yet"
+        );
         break;
       }
       case "MemberExpression": {
@@ -310,7 +329,9 @@ class AstValidator extends LocatedErrors {
         break;
       }
       case "ConditionalExpression": {
-        this.borkAt(expr, "TODO");
+        this.validateExpression(expr.test);
+        this.validateExpression(expr.consequent);
+        this.validateExpression(expr.alternate);
         break;
       }
       case "NewExpression":
@@ -377,6 +398,15 @@ class AstValidator extends LocatedErrors {
         this.borkAt(expr, "unknown statement " + (expr as any).type);
       }
     }
+  }
+
+  validateLoopParent(loop: AnyNode2, parent: AnyNode) {
+    this.invariantAt(
+      loop,
+      parent.type === "LabeledStatement",
+      () =>
+        `Loop parent type must be a LabeledStatement, instead it is ${parent.type}`
+    );
   }
 
   validatePattern(pat: Pattern | Pattern[]) {

@@ -30,7 +30,3 @@ export function parseJsFile(
 export function stringifyJsFile(source: Program | Function) {
   return astring.generate(source).trimEnd();
 }
-
-export function stringifyJsBlock(source: BlockStatement) {
-  return astring.generate(source).trimEnd();
-}

@@ -1,70 +1,69 @@
-import { asInstance, invariant, maparrayPush } from "../utils";
 import {
+  astNaiveChildren,
   astNaiveTraversal,
   astTraverseExitNodes,
-  isFunction,
 } from "../ast/ast-traversal";
 import {
   AnyNode,
-  AssignmentExpression,
-  CallExpression,
   Expression,
-  Function,
-  FunctionExpression,
   isExpression,
-  Pattern,
+  isStatement,
   Program,
+  StatementOrDeclaration,
 } from "../ast/augmented-ast";
-import { defined, zip } from "../utils";
+import { Parents } from "../ast/parents";
+import { enumerate, invariant, todo, unreachable } from "../utils";
 import {
+  ArrayType,
   BooleanType,
   FunctionType,
   NullType,
   NumberType,
   NumericType,
+  PtrType,
   StringType,
   Type,
+  typeEqual,
   typeUnion,
   TypeVariable,
   UndefinedType,
+  UnknownType,
 } from "./type";
 import {
   TypeBack,
+  TypeDependency,
+  TypeDependencyConditionalExpression,
+  TypeDependencyCopyArgsToFunction,
   TypeDependencyCopyReturnToCall,
+  TypeDependencyDataStructureRead,
+  TypeDependencyDataStructureWrite,
   TypeDependencyReturnType,
   TypeDependencyTypeBack,
-  TypeDependencyBindingAssignments,
+  TypeDependencyVariableRead,
+  TypeDependencyVariableWrite,
 } from "./type-dependencies";
 import { TypeEnvironment } from "./type-environment";
-import { findCompleteFunctions } from "./complete-functions";
 
 export function propagateTypes(env: TypeEnvironment, program: Program) {
   /** Pass 0: fill in TypeEnvironment with empty TypeVariable's.
    *
-   * All expressions will have a unique TypeVariable, whose type will be undefined for now
-   * Identifiers referring to the same variable will share their TypeVariable instance, and be indexed in TypeEnvironment.bindingVars
+   * All expressions and bindings will have a unique TypeVariable, whose type will be undefined for now
    **/
   pass0AssignTypeVariables(env, program);
 
   /** Pass 1: mark literals, `undefined` and other certainly-known types. */
   pass1MarkSelfEvidentTypes(env, program);
 
-  /** Pass 2: find assigned variables and create dependent, OneOfType instances */
-  pass2MarkAssignments(env, program);
+  /** Pass 2: knowing that the TypeVariables are defined, create types that depend on them */
+  pass2MarkDependentTypes(env, program);
 
-  /** Pass 3: knowing that the TypeVariables are defined, create types that depend on them */
-  pass3MarkDependentTypes(env, program);
-
-  /** Pass 4: find all functions whose calls are fully known, and mark their argument types and return types */
-  pass4MarkFunctionArgsAndRet(env, program);
-
-  /** Pass 5: pump dependencies */
-  pass5PumpDependencies(env, program);
+  /** Pass 3: pump dependencies */
+  pass3PumpDependencies(env, program);
 }
 
 function pass0AssignTypeVariables(env: TypeEnvironment, program: Program) {
   for (const binding of program.allBindings.values()) {
-    env.setBindingType(
+    env.setBindingTypeVar(
       binding.uniqueName,
       new TypeVariable(undefined, binding.uniqueName + " binding")
     );
@@ -74,12 +73,12 @@ function pass0AssignTypeVariables(env: TypeEnvironment, program: Program) {
     if (node.type === "Identifier") {
       if (node.isReference) {
         invariant(node.uniqueName);
-        const inClosure = env.getBindingType(node.uniqueName);
-        env.setNodeType(node, inClosure);
+        const inClosure = env.getBindingTypeVar(node.uniqueName);
+        env.setNodeTypeVar(node, inClosure);
       }
     } else if (isExpression(node)) {
       const tVar = new TypeVariable(undefined, node.type + " expression");
-      env.setNodeType(node, tVar);
+      env.setNodeTypeVar(node, tVar);
     }
   }
 }
@@ -102,15 +101,15 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
           }
           switch (typeof node.value) {
             case "number": {
-              just(new NumberType(node.value));
+              just(new NumberType());
               break;
             }
             case "string": {
-              just(new StringType(node.value));
+              just(new StringType());
               break;
             }
             case "boolean": {
-              just(new BooleanType(node.value));
+              just(new BooleanType());
               break;
             }
             case "object": {
@@ -129,12 +128,14 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
             just(new BooleanType());
           } else if (node.operator === "+") {
             just(new NumberType());
-          } else if (node.operator === "-" || node.operator === "~") {
+          } else if (node.operator === "-") {
             just(new NumericType());
           } else if (node.operator === "!") {
             just(new BooleanType());
           } else if (node.operator === "typeof") {
             just(new StringType());
+          } else if (node.operator === "~") {
+            just(new NumberType());
           } else {
             invariant(
               node.operator === "void",
@@ -147,7 +148,15 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
         }
         case "FunctionExpression":
         case "ArrowFunctionExpression": {
-          just(new FunctionType(node));
+          just(
+            new PtrType(
+              new FunctionType(
+                node.id?.uniqueName,
+                new ArrayType(new UnknownType()),
+                new UnknownType()
+              )
+            )
+          );
           break;
         }
 
@@ -222,19 +231,35 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
             case "*":
             case "/":
             case "%":
+              just(new NumericType());
+              break;
             case "|":
             case "^":
             case "&":
             case "<<":
             case ">>":
             case ">>>":
-              just(new NumericType());
+              just(new NumberType());
               break;
 
             case "instanceof":
             case "in":
               just(new BooleanType());
               break;
+          }
+          break;
+        }
+        case "NewExpression": {
+          if (node.callee.type === "Identifier") {
+            if (node.callee.uniqueName === "Array@global") {
+              just(new ArrayType(new UnknownType()));
+            }
+            if (node.callee.uniqueName === "Set@global") {
+              invariant(false);
+            }
+            if (node.callee.uniqueName === "Map@global") {
+              invariant(false);
+            }
           }
           break;
         }
@@ -247,438 +272,318 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
   }
 }
 
-function pass2MarkAssignments(env: TypeEnvironment, program: Program) {
-  const namesToDependencies = new Map<
-    string,
-    TypeDependencyBindingAssignments
-  >();
-  program.allBindings.forEach((bind) => {
-    if (bind.explicitlyDefined) {
-      const tDep = new TypeDependencyBindingAssignments(
-        `variable ${bind.uniqueName} depends on ${bind.assignments} assignments`,
-        env.getBindingType(bind.uniqueName),
-        bind.assignments,
-        []
+function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
+  function onExpression(node: Expression) {
+    /** When you can refine your knowledge after knowing other types */
+    const depends = (
+      dependsOn: (TypeVariable | Expression)[],
+      comment: string,
+      typeBack: TypeBack
+    ) => {
+      const target = env.getNodeTypeVar(node);
+      invariant(target);
+      const dependencies = dependsOn.map((t) => {
+        const tVar = t instanceof TypeVariable ? t : env.getNodeTypeVar(t);
+        invariant(tVar);
+        return tVar;
+      });
+      env.addTypeDependency(
+        new TypeDependencyTypeBack(comment, target, dependencies, typeBack)
       );
-
-      namesToDependencies.set(bind.uniqueName, tDep);
-
-      env.addTypeDependency(tDep);
-    }
-  });
-
-  for (const node of astNaiveTraversal(program)) {
-    type AssignmentLike = {
-      left: Pattern;
-      right: Expression;
-      operator: AssignmentExpression["operator"];
-      comment: string;
-      isConstant: boolean;
     };
-    function intoAssignmentLike(node: AnyNode): AssignmentLike | undefined {
-      if (node.type === "AssignmentExpression") {
-        let { left, right, operator } = node;
-        return {
-          left,
-          right,
-          operator,
-          comment:
-            "assignment" + (operator === "=" ? "" : " (" + operator + ")"),
-          isConstant: false,
-        };
-      } else if (node.type === "VariableDeclaration") {
-        invariant(node.declarations.length === 1);
-        const kind = node.kind;
-        const { id: left, init: right } = node.declarations[0];
-        return {
-          left,
-          right,
-          operator: "=",
-          comment: "variable",
-          isConstant: kind === "const",
-        };
-      } else {
-        return undefined;
-      }
-    }
-    const asAssignmentLike = intoAssignmentLike(node);
-    if (
-      asAssignmentLike &&
-      asAssignmentLike.operator === "=" &&
-      asAssignmentLike.left.type === "Identifier"
-    ) {
-      // TODO: +=, not identifiers, etc
 
-      const { left, right, operator, isConstant } = asAssignmentLike;
-
-      const possibility = env.getNodeTypeVar(right);
-
-      /* TODO treat const differently
-      if (isConstant) {
-        // Never reassigned!
-        env.bindingVars.set(left.uniqueName, possibility);
-        env.typeVars.set(left, possibility);
-      } else {
-       */
-      const tDep = namesToDependencies.get(left.uniqueName);
-      if (tDep) {
-        tDep.possibilities.push(possibility);
-      }
-    }
-  }
-}
-
-function pass3MarkDependentTypes(env: TypeEnvironment, program: Program) {
-  for (const node of astNaiveTraversal(program)) {
-    if (isExpression(node)) {
-      /** When you can refine your knowledge after knowing other types */
-      const depends = (
-        dependsOn: (TypeVariable | Expression)[],
-        comment: string,
-        typeBack: TypeBack
-      ) => {
-        const target = env.getNodeTypeVar(node);
-        invariant(target);
-        const dependencies = dependsOn.map((t) => {
-          const tVar = t instanceof TypeVariable ? t : env.getNodeTypeVar(t);
-          invariant(tVar);
-          return tVar;
-        });
-        //addDependentType(env, { dependencies, target, comment, typeBack });
-        env.addTypeDependency(
-          new TypeDependencyTypeBack(comment, target, dependencies, typeBack)
-        );
-      };
-
-      switch (node.type) {
-        case "Identifier": {
-          break;
-        }
-        case "Literal": {
-          break;
-        }
-        case "ThisExpression": {
-          break;
-        }
-        case "ArrayExpression": {
-          break;
-        }
-        case "ObjectExpression": {
-          break;
-        }
-        case "FunctionExpression": {
-          break;
-        }
-        case "UnaryExpression": {
-          break;
-        }
-        case "UpdateExpression": {
-          break;
-        }
-        case "BinaryExpression": {
-          if (node.left.type !== "PrivateIdentifier") {
-            switch (node.operator) {
-              case "==": {
-                break;
-              }
-              case "!=": {
-                break;
-              }
-              case "===": {
-                break;
-              }
-              case "!==": {
-                break;
-              }
-              case "<": {
-                break;
-              }
-              case "<=": {
-                break;
-              }
-              case ">": {
-                break;
-              }
-              case ">=": {
-                break;
-              }
-              case "<<": {
-                break;
-              }
-              case ">>": {
-                break;
-              }
-              case ">>>": {
-                break;
-              }
-              case "+": {
-                depends(
-                  [node.left, node.right],
-                  '"+" operator',
-                  ([left, right]) => {
-                    if (
-                      left instanceof NumberType &&
-                      right instanceof NumberType
-                    ) {
-                      return new NumberType();
-                    }
-                    return null;
+    switch (node.type) {
+      case "Identifier":
+      case "Literal":
+      case "ThisExpression":
+      case "ArrayExpression":
+      case "ObjectExpression":
+      case "UnaryExpression":
+      case "UpdateExpression":
+        break;
+      case "BinaryExpression": {
+        if (node.left.type !== "PrivateIdentifier") {
+          switch (node.operator) {
+            case "==":
+            case "!=":
+            case "===":
+            case "!==":
+            case "<":
+            case "<=":
+            case ">":
+            case ">=":
+            case "<<":
+            case ">>":
+            case ">>>":
+              break;
+            case "+": {
+              depends(
+                [node.left, node.right],
+                '"+" operator',
+                ([left, right]) => {
+                  if (
+                    left instanceof NumberType &&
+                    right instanceof NumberType
+                  ) {
+                    return new NumberType();
                   }
-                );
-                break;
-              }
-              case "-": {
-                break;
-              }
-              case "*": {
-                break;
-              }
-              case "/": {
-                break;
-              }
-              case "%": {
-                break;
-              }
-              case "|": {
-                break;
-              }
-              case "^": {
-                break;
-              }
-              case "&": {
-                break;
-              }
-              case "in": {
-                break;
-              }
-              case "instanceof": {
-                break;
-              }
-              case "**": {
-                break;
-              }
+                  return null;
+                }
+              );
+              break;
             }
+            case "-":
+            case "*":
+            case "/":
+            case "%": {
+              /* TODO: this is already marked as NumericType. Below is a possible refinement.
+              depends(
+                [node.left, node.right],
+                "- * / operators depend on the operands. Could be BigInt or number",
+                ([left, right]) => {
+                  if (
+                    left instanceof NumberType && right instanceof NumberType
+                  ) {
+                    return new NumberType()
+                  }
+                  return null
+                }
+              );
+              break; */
+            }
+            case "|":
+            case "^":
+            case "&":
+            case "in":
+            case "instanceof":
+            case "**":
+              break;
           }
-          break;
         }
-        case "AssignmentExpression": {
-          if (node.operator === "=" && node.left.type === "Identifier") {
-            depends(
-              [env.getBindingType(node.left.uniqueName)],
-              "return value of assignment expr",
-              ([bindingType]) => bindingType
-            );
-          }
-          break;
-        }
-        case "LogicalExpression": {
-          break;
-        }
-        case "MemberExpression": {
-          break;
-        }
-        case "ConditionalExpression": {
-          break;
-        }
-        case "CallExpression": {
-          break;
-        }
-        case "NewExpression": {
-          break;
-        }
-        case "SequenceExpression": {
-          break;
-        }
-        case "ArrowFunctionExpression": {
-          break;
-        }
-        case "YieldExpression": {
-          break;
-        }
-        case "TemplateLiteral": {
-          break;
-        }
-        case "TaggedTemplateExpression": {
-          break;
-        }
-        case "ClassExpression": {
-          break;
-        }
-        case "MetaProperty": {
-          break;
-        }
-        case "AwaitExpression": {
-          break;
-        }
-        case "ChainExpression": {
-          break;
-        }
-        case "ImportExpression": {
-          break;
-        }
-      }
-    }
-  }
-}
-
-function pass4MarkFunctionArgsAndRet(env: TypeEnvironment, program: Program) {
-  const completeFunctions = findCompleteFunctions(program);
-  const byName = new Map(
-    [...completeFunctions.entries()].flatMap(([func, nodeInfo]) => {
-      return nodeInfo.map((str) => [str, func]);
-    })
-  );
-  const calls = new Map<Function, CallExpression[]>();
-
-  for (const node of astNaiveTraversal(program)) {
-    if (node.type !== "CallExpression") continue;
-
-    const funcNode =
-      node.callee.type === "Identifier"
-        ? byName.get(node.callee.uniqueName)
-        : isFunction(node.callee)
-        ? node.callee
-        : undefined;
-    const tVar = funcNode && env.getNodeTypeVar(funcNode as any);
-
-    if (!funcNode || !tVar) continue;
-
-    maparrayPush(calls, funcNode, node);
-  }
-
-  for (const func of calls.keys()) {
-    const tFunc = asInstance(
-      env.getNodeType(func as FunctionExpression),
-      FunctionType
-    );
-    const callExprNodes = defined(calls.get(func));
-
-    let quit = false;
-
-    const paramUniqueNames: string[] = [];
-    for (const param of func.params) {
-      invariant(param.type === "Identifier", "Unsupported");
-
-      paramUniqueNames.push(param.uniqueName);
-    }
-
-    const argTVars: Array<(TypeVariable | undefined)[]> = Array.from(
-      { length: func.params.length },
-      () => []
-    );
-    for (const callExpr of callExprNodes) {
-      if (
-        callExpr.arguments.length !== func.params.length ||
-        callExpr.arguments.some((a) => a.type === "SpreadElement")
-      ) {
-        quit = true;
         break;
       }
+      case "AssignmentExpression": {
+        if (node.operator === "=") {
+          depends(
+            [env.getNodeTypeVar(node.right)],
+            "assignment expr returns its assigned value",
+            ([assignedValue]) => assignedValue
+          );
 
-      for (let paramI = 0; paramI < func.params.length; paramI++) {
-        argTVars[paramI].push(env.getNodeTypeVar(callExpr.arguments[paramI]));
+          if (node.left.type === "MemberExpression") {
+            // TODO also handle other types (eg Identifier)
+
+            invariant(
+              node.left.object.type === "Identifier",
+              "TODO: other membex"
+            );
+
+            recurse(node.right);
+
+            if (node.left.computed) {
+              recurse(node.left.property);
+            }
+
+            env.addTypeDependency(
+              new TypeDependencyDataStructureWrite(
+                "write (member expression)",
+                env.getNodeTypeVar(node.left.object),
+                env.getNodeTypeVar(node.left.property),
+                env.getNodeTypeVar(node.right)
+              )
+            );
+
+            return true;
+          } else if (node.left.type === "Identifier") {
+            env.addTypeDependency(
+              new TypeDependencyVariableWrite(
+                "writing to an identifier using an AssignmentExpression",
+                env.getBindingTypeVar(node.left.uniqueName),
+                env.getNodeTypeVar(node.right)
+              )
+            );
+          } else {
+            todo();
+          }
+        }
+        break;
       }
-    }
-
-    if (quit) continue;
-
-    // ARG TYPES
-    invariant(tFunc.params == null);
-    tFunc.params = [];
-
-    for (const [argName, passedArgs] of zip(paramUniqueNames, argTVars)) {
-      if (!passedArgs.every((d) => d != null)) {
-        continue; // some were unknown
+      case "MemberExpression": {
+        env.addTypeDependency(
+          new TypeDependencyDataStructureRead(
+            "read",
+            env.getNodeTypeVar(node),
+            env.getNodeTypeVar(node.object),
+            env.getNodeTypeVar(node.property)
+          )
+        );
+        break;
       }
+      case "ConditionalExpression": {
+        env.addTypeDependency(
+          new TypeDependencyConditionalExpression(
+            "?: ternary operator depends on branches types and conditional truth",
+            env.getNodeTypeVar(node),
+            env.getNodeTypeVar(node.test),
+            env.getNodeTypeVar(node.consequent),
+            env.getNodeTypeVar(node.alternate)
+          )
+        );
+        break;
+      }
+      case "CallExpression": {
+        env.addTypeDependency(
+          new TypeDependencyCopyReturnToCall(
+            "copy return to call",
+            env.getNodeTypeVar(node),
+            env.getNodeTypeVar(node.callee)
+          )
+        );
+        env.addTypeDependency(
+          new TypeDependencyCopyArgsToFunction(
+            "copy args to function",
+            env.getNodeTypeVar(node.callee),
+            node.arguments.map((arg) => {
+              invariant(arg.type !== "SpreadElement");
+              return env.getNodeTypeVar(arg);
+            })
+          )
+        );
+        break;
+      }
+      case "FunctionExpression":
+      case "ArrowFunctionExpression": {
+        env.addTypeDependency(
+          new TypeDependencyReturnType(
+            "the function's return value depends on the tVars of return statements",
+            env.getNodeTypeVar(node),
+            [...astTraverseExitNodes(node)].map((node) => {
+              invariant(node.type !== "ThrowStatement");
+              return env.getNodeTypeVar(node.argument);
+            })
+          )
+        );
 
-      tFunc.params.push(env.getBindingType(argName));
-
-      const dep = env.getTypeDependency(env.getBindingType(argName));
-      invariant(dep instanceof TypeDependencyBindingAssignments);
-
-      dep.targetPossibilityCount += passedArgs.length;
-      dep.possibilities.push(...passedArgs);
-
-      // HACK: when the var-tracking code creates our
-      // TypeDependencyBindingAssignments, it trusts BindingTracker's "assignments",
-      // which counts the parameter itself. To fix this, we decrement.
-      // If we couldn't get to this line, it would simply never resolve which is great, since we wouldn't know everything this argument could be.
-      dep.targetPossibilityCount--;
-    }
-
-    // RET TYPE
-    const exitNodes = [...astTraverseExitNodes(func as FunctionExpression)];
-    const exitTVars = exitNodes.map((node) => {
-      invariant(
-        node.type === "ReturnStatement",
-        "throw not supported right now"
-      );
-      invariant(
-        node.argument,
-        "TODO normalize plain return to `return undefined`"
-      );
-
-      return env.getNodeTypeVar(node.argument);
-    });
-
-    const tVarRet = (tFunc as FunctionType).returns;
-    if (exitTVars.length) {
-      env.addTypeDependency(
-        new TypeDependencyReturnType(
-          "the function's return value depends on the tVars of return statements",
-          tVarRet,
-          exitTVars
-        )
-      );
-    } else {
-      // No `return`
-      tVarRet.type = new UndefinedType();
-    }
-
-    // MAPPING THE RET TYPE TO THE CALLS
-    for (const call of callExprNodes) {
-      env.addTypeDependency(
-        new TypeDependencyCopyReturnToCall(
-          "copy the function ret into the callsite",
-          env.getNodeTypeVar(call),
-          tVarRet
-        )
-      );
+        for (const [i, param] of enumerate(node.params)) {
+          invariant(param.type === "Identifier");
+          env.addTypeDependency(
+            new TypeDependencyTypeBack(
+              `function parameter #${i}`,
+              env.getBindingTypeVar(param.uniqueName),
+              [env.getNodeTypeVar(node)],
+              ([funcType]) => {
+                return (
+                  (funcType instanceof PtrType &&
+                    funcType.asFunction?.params.nthFunctionParameter(i)) ||
+                  null
+                );
+              }
+            )
+          );
+        }
+        break;
+      }
+      case "LogicalExpression":
+      case "NewExpression":
+      case "SequenceExpression":
+      case "YieldExpression":
+      case "TemplateLiteral":
+      case "TaggedTemplateExpression":
+      case "ClassExpression":
+      case "MetaProperty":
+      case "AwaitExpression":
+      case "ChainExpression":
+      case "ImportExpression":
+        break;
+      default:
+        unreachable();
     }
   }
+
+  function onStatement(node: StatementOrDeclaration) {
+    switch (node.type) {
+      case "VariableDeclaration": {
+        const { id, init } = node.declarations[0];
+        invariant(id.type === "Identifier");
+
+        env.addTypeDependency(
+          new TypeDependencyVariableWrite(
+            "copy initializer into vardecl " + id.uniqueName,
+            env.getBindingTypeVar(id.uniqueName),
+            env.getNodeTypeVar(init)
+          )
+        );
+      }
+    }
+  }
+
+  function recurse(node: AnyNode) {
+    for (const child of astNaiveChildren(node)) {
+      if (isExpression(child)) {
+        if (onExpression(child)) {
+          // can return true to abort
+          continue;
+        }
+      } else if (isStatement(child)) {
+        onStatement(child);
+      }
+      recurse(child);
+    }
+  }
+
+  recurse(program);
 }
 
-function pass5PumpDependencies(env: TypeEnvironment, _program: Program) {
-  const allDeps = env.getAllTypeDependencies();
-
-  invariant(
-    new Set([...allDeps].map((dep) => dep.target)).size === allDeps.size,
-    "every target has at most one TypeDependency pointing to it"
-  );
-  invariant(
-    [...allDeps].every((dep) => dep.target.type === undefined),
-    "every dependency target type is as-of-yet unknown"
-  );
+function pass3PumpDependencies(env: TypeEnvironment, _program: Program) {
+  const allDeps = new Map(env.getAllTypeDependencies2());
 
   for (let pass = 0; pass < 2000000; pass++) {
+    // Sanity checks
+    //invariant(
+    //  [...allDeps].flat().every((dep) => dep.target.type === undefined),
+    //  "every dependency target type is as-of-yet unknown"
+    //);
+    invariant(
+      [...allDeps].every(([_k, depSet]) => depSet.length > 0),
+      "all depSets have at least one dep"
+    );
+    invariant(
+      [...allDeps].every(
+        ([_k, depSet]) =>
+          depSet.length === 0 ||
+          depSet.every((dep) => dep.target === depSet[0].target)
+      ),
+      "each depSet points to the same dep"
+    );
+
     let anyProgress = false;
 
-    for (const dep of allDeps) {
-      const [done, type] = dep.pump();
-      if (done) {
-        allDeps.delete(dep);
+    for (const [target, depSet] of allDeps) {
+      let originalType = PtrType.deref(target.type);
+
+      target.type = depSet.reduce(
+        (acc: Type | undefined, dep: TypeDependency, i): Type | undefined => {
+          if (acc == null && i > 0) return undefined;
+
+          let [_done, type] = dep.pump();
+
+          return acc == null
+            ? type ?? undefined
+            : typeUnion(acc, type ?? undefined);
+        },
+        target.type
+      );
+
+      // We moved forward
+      if (!typeEqual(PtrType.deref(target.type), originalType)) {
         anyProgress = true;
       }
+    }
 
-      if (type) {
-        if (!dep.target.type) {
-          dep.target.type = type;
-        } else {
-          invariant(false, "TODO test progressive type refinement");
-          // TODO we should use union here?
-          // dep.target.type = typeUnion(dep.target.type, type);
-          // invariant(dep.target.type, "type union unsuccessful")
-        }
+    if (!anyProgress && false) {
+      // Print deps (debug)
+      for (const [target, dep] of allDeps) {
+        console.log(dep, "-->", target);
       }
     }
 

@@ -1,6 +1,6 @@
 import {
   BooleanType,
-  NullableType,
+  OptionalType,
   NullType,
   NumberType,
   NumericType,
@@ -14,23 +14,23 @@ it("knows how to union types", () => {
   expect(
     [
       [new BooleanType(), new BooleanType()],
-      [new BooleanType(true), new BooleanType()],
-      [new BooleanType(true), new BooleanType(true)],
-      [new BooleanType(true), new BooleanType(false)],
+      [new BooleanType(), new BooleanType()],
+      [new BooleanType(), new BooleanType()],
+      [new BooleanType(), new BooleanType()],
 
       [new NumberType(), new NumberType()],
-      [new NumberType(1), new NumberType()],
-      [new NumberType(1), new NumberType(2)],
-      [new NumberType(1), new NumberType(1)],
+      [new NumberType(), new NumberType()],
+      [new NumberType(), new NumberType()],
+      [new NumberType(), new NumberType()],
 
       [new NumberType(), new NumericType()],
-      [new NumberType(1), new NumericType()],
+      [new NumberType(), new NumericType()],
       [new NumericType(), new NumericType()],
 
       [new StringType(), new StringType()],
-      [new StringType("x"), new StringType()],
-      [new StringType("x"), new StringType("x")],
-      [new StringType("x"), new StringType("y")],
+      [new StringType(), new StringType()],
+      [new StringType(), new StringType()],
+      [new StringType(), new StringType()],
 
       [new NullType(), new NullType()],
 
@@ -39,20 +39,20 @@ it("knows how to union types", () => {
   ).toMatchInlineSnapshot(`
     [
       "Boolean           |  Boolean        =  Boolean",
-      "Boolean true      |  Boolean        =  Boolean",
-      "Boolean true      |  Boolean true   =  Boolean true",
-      "Boolean true      |  Boolean false  =  Boolean",
+      "Boolean           |  Boolean        =  Boolean",
+      "Boolean           |  Boolean        =  Boolean",
+      "Boolean           |  Boolean        =  Boolean",
       "Number            |  Number         =  Number",
-      "Number 1          |  Number         =  Number",
-      "Number 1          |  Number 2       =  Number",
-      "Number 1          |  Number 1       =  Number 1",
+      "Number            |  Number         =  Number",
+      "Number            |  Number         =  Number",
+      "Number            |  Number         =  Number",
       "Number            |  Numeric        =  Numeric",
-      "Number 1          |  Numeric        =  Numeric",
+      "Number            |  Numeric        =  Numeric",
       "Numeric           |  Numeric        =  Numeric",
       "String            |  String         =  String",
-      "String "x"        |  String         =  String",
-      "String "x"        |  String "x"     =  String "x"",
-      "String "x"        |  String "y"     =  String",
+      "String            |  String         =  String",
+      "String            |  String         =  String",
+      "String            |  String         =  String",
       "Null              |  Null           =  Null",
       "Undefined         |  Undefined      =  Undefined",
     ]
@@ -62,19 +62,19 @@ it("knows how to union types", () => {
 it("knows how to union composed types", () => {
   expect(
     [
-      [new NullableType(new NumberType()), new NumberType()],
-      [new NullableType(new NumberType()), new NumberType(1)],
-      [new NullableType(new NumberType(1)), new NumberType()],
-      [new NullableType(new NumberType(1)), new NumberType(2)],
-      [new NullableType(new StringType()), new NumberType()],
+      [new OptionalType(new NumberType()), new NumberType()],
+      [new OptionalType(new NumberType()), new NumberType()],
+      [new OptionalType(new NumberType()), new NumberType()],
+      [new OptionalType(new NumberType()), new NumberType()],
+      [new OptionalType(new StringType()), new NumberType()],
     ].map(testUnion)
   ).toMatchInlineSnapshot(`
     [
-      "Nullable Number   |  Number         =  Nullable Number",
-      "Nullable Number   |  Number 1       =  Nullable Number",
-      "Nullable Number 1 |  Number         =  Nullable Number",
-      "Nullable Number 1 |  Number 2       =  Nullable Number",
-      "Nullable String   |  Number         =  undefined",
+      "Optional Number   |  Number         =  Optional Number",
+      "Optional Number   |  Number         =  Optional Number",
+      "Optional Number   |  Number         =  Optional Number",
+      "Optional Number   |  Number         =  Optional Number",
+      "Optional String   |  Number         =  undefined",
     ]
   `);
 });

@@ -97,19 +97,24 @@ export interface BlockStatement extends Node {
   body: Array<Statement>;
 }
 
+/*
+AUGMENTED: turned into BlockStatement
 export interface EmptyStatement extends Node {
   type: "EmptyStatement";
 }
+*/
 
 export interface DebuggerStatement extends Node {
   type: "DebuggerStatement";
 }
 
+/* AUGMENTED: no, thanks
 export interface WithStatement extends Node {
   type: "WithStatement";
   object: Expression;
   body: Statement;
 }
+*/
 
 export interface ReturnStatement extends Node {
   type: "ReturnStatement";
@@ -119,7 +124,14 @@ export interface ReturnStatement extends Node {
 export interface LabeledStatement extends Node {
   type: "LabeledStatement";
   label: Identifier;
-  body: BlockStatement; // AUGMENTED: this is always a block
+  body:
+    | BlockStatement
+    | ForStatement
+    | WhileStatement
+    | DoWhileStatement
+    | ForInStatement
+    | ForOfStatement
+    | SwitchStatement;
 }
 
 export interface BreakStatement extends Node {
@@ -135,8 +147,8 @@ export interface ContinueStatement extends Node {
 export interface IfStatement extends Node {
   type: "IfStatement";
   test: Expression;
-  consequent: Statement;
-  alternate?: Statement | null;
+  consequent: BlockStatement;
+  alternate?: BlockStatement | null;
 }
 
 export interface SwitchStatement extends Node {
@@ -589,9 +601,7 @@ export interface StaticBlock extends Node {
 export type Statement =
   | ExpressionStatement
   | BlockStatement
-  | EmptyStatement
   | DebuggerStatement
-  | WithStatement
   | ReturnStatement
   | LabeledStatement
   | BreakStatement
@@ -653,6 +663,13 @@ export type ModuleDeclaration =
   | ExportNamedDeclaration
   | ExportDefaultDeclaration
   | ExportAllDeclaration;
+
+export type Loop =
+  | WhileStatement
+  | DoWhileStatement
+  | ForStatement
+  | ForInStatement
+  | ForOfStatement;
 
 // AUGMENTED
 export type ExpressionOrStatement =
@@ -743,9 +760,7 @@ export const isExpression = (node: AnyNode): node is Expression =>
 export const statementTypes = new Set<StatementOrDeclaration["type"]>([
   "ExpressionStatement",
   "BlockStatement",
-  "EmptyStatement",
   "DebuggerStatement",
-  "WithStatement",
   "ReturnStatement",
   "LabeledStatement",
   "BreakStatement",
@@ -767,3 +782,10 @@ export const statementTypes = new Set<StatementOrDeclaration["type"]>([
 ]);
 export const isStatement = (node: AnyNode): node is StatementOrDeclaration =>
   statementTypes.has(node.type as StatementOrDeclaration["type"]);
+
+export const isLoop = (body: AnyNode): body is Loop =>
+  body.type === "WhileStatement" ||
+  body.type === "DoWhileStatement" ||
+  body.type === "ForStatement" ||
+  body.type === "ForInStatement" ||
+  body.type === "ForOfStatement";

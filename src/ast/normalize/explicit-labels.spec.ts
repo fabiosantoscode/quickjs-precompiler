@@ -27,14 +27,12 @@ it("makes labels explicit", () => {
     }
     bar: {
       let x = undefined;
-      for (x of [1, 2, 3]) {
-        break bar;
+      autoLabel_1: for (x of [1, 2, 3]) {
+        break autoLabel_1;
       }
     }
-    autoLabel_1: {
-      while (0) {
-        continue autoLabel_1;
-      }
+    autoLabel_2: while (0) {
+      continue autoLabel_2;
     }"
   `);
 });

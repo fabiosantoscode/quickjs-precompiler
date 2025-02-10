@@ -11,15 +11,13 @@ export function ensureBlocks(root: Program) {
         node.alternate &&= astMakeBlockOfOne(node.alternate);
         break;
       }
+      case "DoWhileStatement":
       case "WhileStatement": {
         node.body = astMakeBlockOfOne(node.body);
         break;
       }
       case "ForInStatement":
-      case "ForOfStatement": {
-        node.body = astMakeBlockOfOne(node.body);
-        break;
-      }
+      case "ForOfStatement":
       case "ForStatement": {
         node.body = astMakeBlockOfOne(node.body);
         break;

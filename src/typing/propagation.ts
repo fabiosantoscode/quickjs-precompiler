@@ -12,11 +12,14 @@ import {
   StatementOrDeclaration,
 } from "../ast/augmented-ast";
 import { Parents } from "../ast/parents";
+import { compileAndRunC } from "../run";
 import { enumerate, invariant, todo, unreachable } from "../utils";
+import { TypeMutation } from "./mutation";
 import {
   ArrayType,
   BooleanType,
   FunctionType,
+  InvalidType,
   NullType,
   NumberType,
   NumericType,
@@ -44,11 +47,12 @@ import {
 } from "./type-dependencies";
 import { TypeEnvironment } from "./type-environment";
 
-export function propagateTypes(env: TypeEnvironment, program: Program) {
-  /** Pass 0: fill in TypeEnvironment with empty TypeVariable's.
-   *
-   * All expressions and bindings will have a unique TypeVariable, whose type will be undefined for now
-   **/
+export function propagateTypes(
+  env: TypeEnvironment,
+  program: Program,
+  unitTestMode = false
+) {
+  /** Pass 0: fill in TypeEnvironment with empty TypeVariable's **/
   pass0AssignTypeVariables(env, program);
 
   /** Pass 1: mark literals, `undefined` and other certainly-known types. */
@@ -58,14 +62,14 @@ export function propagateTypes(env: TypeEnvironment, program: Program) {
   pass2MarkDependentTypes(env, program);
 
   /** Pass 3: pump dependencies */
-  pass3PumpDependencies(env, program);
+  pass3PumpDependencies(env, program, unitTestMode);
 }
 
 function pass0AssignTypeVariables(env: TypeEnvironment, program: Program) {
   for (const binding of program.allBindings.values()) {
     env.setBindingTypeVar(
       binding.uniqueName,
-      new TypeVariable(undefined, binding.uniqueName + " binding")
+      new TypeVariable(new UnknownType(), binding.uniqueName + " binding")
     );
   }
 
@@ -77,7 +81,10 @@ function pass0AssignTypeVariables(env: TypeEnvironment, program: Program) {
         env.setNodeTypeVar(node, inClosure);
       }
     } else if (isExpression(node)) {
-      const tVar = new TypeVariable(undefined, node.type + " expression");
+      const tVar = new TypeVariable(
+        new UnknownType(),
+        node.type + " expression"
+      );
       env.setNodeTypeVar(node, tVar);
     }
   }
@@ -88,8 +95,9 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
     if (isExpression(node)) {
       /** When you just know that the type is for example NumberType, or equal to another node's type */
       const just = (theType: Type) => {
-        invariant(env.getNodeType(node) === undefined);
-        env.getNodeTypeVar(node).type = theType;
+        const tVar = env.getNodeTypeVar(node);
+        invariant(tVar.type instanceof UnknownType);
+        tVar.type = theType;
       };
 
       switch (node.type) {
@@ -148,15 +156,8 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
         }
         case "FunctionExpression":
         case "ArrowFunctionExpression": {
-          just(
-            new PtrType(
-              new FunctionType(
-                node.id?.uniqueName,
-                new ArrayType(new UnknownType()),
-                new UnknownType()
-              )
-            )
-          );
+          const func = FunctionType.forASTNode(node.id?.uniqueName);
+          just(PtrType.fromMutableType(func));
           break;
         }
 
@@ -252,7 +253,7 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
         case "NewExpression": {
           if (node.callee.type === "Identifier") {
             if (node.callee.uniqueName === "Array@global") {
-              just(new ArrayType(new UnknownType()));
+              just(PtrType.fromMutableType(new ArrayType(new UnknownType())));
             }
             if (node.callee.uniqueName === "Set@global") {
               invariant(false);
@@ -534,8 +535,13 @@ function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
   recurse(program);
 }
 
-function pass3PumpDependencies(env: TypeEnvironment, _program: Program) {
-  const allDeps = new Map(env.getAllTypeDependencies2());
+function pass3PumpDependencies(
+  env: TypeEnvironment,
+  _program: Program,
+  testMode = false
+) {
+  const allDeps = env.getAllTypeDependencies();
+  const allDepsInv = env.getAllTypeDependenciesInv();
 
   for (let pass = 0; pass < 2000000; pass++) {
     // Sanity checks
@@ -560,23 +566,56 @@ function pass3PumpDependencies(env: TypeEnvironment, _program: Program) {
 
     for (const [target, depSet] of allDeps) {
       let originalType = PtrType.deref(target.type);
+      let newType: Type | undefined;
 
-      target.type = depSet.reduce(
-        (acc: Type | undefined, dep: TypeDependency, i): Type | undefined => {
-          if (acc == null && i > 0) return undefined;
+      const mutations = TypeMutation.withMutationsCollected(() => {
+        newType = depSet.reduce(
+          (acc: Type | undefined, dep: TypeDependency, i): Type | undefined => {
+            if (acc == null && i > 0) return undefined;
 
-          let [_done, type] = dep.pump();
+            let [_done, type] = dep.pump();
 
-          return acc == null
-            ? type ?? undefined
-            : typeUnion(acc, type ?? undefined);
-        },
-        target.type
-      );
+            if (type && acc) {
+              return typeUnion(type, acc) ?? new InvalidType();
+            } else {
+              return type || acc;
+            }
+          },
+          target.type
+        );
+      });
+
+      if (newType != undefined) {
+        for (const mutation of mutations) {
+          const changed = mutation.mutate();
+          if (changed) anyProgress = true;
+        }
+      }
 
       // We moved forward
-      if (!typeEqual(PtrType.deref(target.type), originalType)) {
+      if (!typeEqual(PtrType.deref(newType), originalType)) {
         anyProgress = true;
+
+        target.type = newType;
+      }
+    }
+
+    // Propagate invalid types!
+    for (const [source, targets] of allDepsInv) {
+      if (PtrType.deref(source.type) instanceof InvalidType) {
+        for (const target of targets) {
+          if (target.type instanceof PtrType) {
+            if (!(target.type._target.target instanceof InvalidType)) {
+              anyProgress = true;
+              target.type._target.target = new InvalidType();
+            }
+          } else {
+            if (!(target.type instanceof InvalidType)) {
+              anyProgress = true;
+              target.type = new InvalidType();
+            }
+          }
+        }
       }
     }
 
@@ -588,6 +627,12 @@ function pass3PumpDependencies(env: TypeEnvironment, _program: Program) {
     }
 
     if (!anyProgress) return;
+
+    if (testMode && pass > 50) {
+      console.log(allDeps);
+      throw new Error("types never converge");
+      return;
+    }
   }
 
   console.warn("Giving up after 2000000 iterations.");

@@ -1,5 +1,5 @@
 import { AnyNode, Program } from "../ast/augmented-ast";
-import { defined, invariant, mapGetOrDefault } from "../utils";
+import { defined, invariant, maparrayPush, mapGetOrDefault } from "../utils";
 import { propagateTypes } from "./propagation";
 import { ObjectType, TypeVariable, UndefinedType } from "./type";
 import { TypeDependency } from "./type-dependencies";
@@ -57,6 +57,9 @@ export class TypeEnvironment {
     invariant(!this.#bindingVars.has(uniqueName));
     this.#bindingVars.set(uniqueName, tVar);
   }
+  getBindingType(uniqueName: string) {
+    return defined(this.#bindingVars.get(uniqueName)).type;
+  }
 
   addTypeDependency(dependency: TypeDependency) {
     if (!this.#typeDependencies.has(dependency.target)) {
@@ -87,11 +90,20 @@ export class TypeEnvironment {
     return out;
   }
 
-  getAllTypeDependencies() {
-    return new Set(this.#typeDependencies.values());
-  }
-
-  getAllTypeDependencies2(): ReadonlyMap<TypeVariable, TypeDependency[]> {
+  getAllTypeDependencies(): ReadonlyMap<TypeVariable, TypeDependency[]> {
     return this.#typeDependencies;
+  }
+  getAllTypeDependenciesInv(): ReadonlyMap<TypeVariable, TypeVariable[]> {
+    const map = new Map<TypeVariable, TypeVariable[]>();
+
+    for (const [target, depSet] of this.#typeDependencies) {
+      for (const dep of depSet) {
+        for (const source of dep.sources) {
+          maparrayPush(map, source, target);
+        }
+      }
+    }
+
+    return map;
   }
 }

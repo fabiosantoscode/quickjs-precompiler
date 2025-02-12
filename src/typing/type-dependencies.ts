@@ -3,13 +3,15 @@ import {
   ArrayType,
   FunctionType,
   NumberType,
-  PartialFunctionType,
   PtrType,
   TupleType,
   Type,
   TypeVariable,
   UndefinedType,
-  typeAnyOf,
+  UnknownType,
+  typeUnionAll,
+  typeUnion,
+  InvalidType,
 } from "./type";
 
 export type TypeBack = (vars: Type[]) => Type | null;
@@ -19,34 +21,6 @@ export interface TypeDependency {
   target: TypeVariable;
   sources: readonly TypeVariable[];
   pump(): [boolean, Type | null];
-}
-
-export class TypeDependencyBindingAssignments implements TypeDependency {
-  constructor(
-    public comment: string,
-    public target: TypeVariable,
-    public targetPossibilityCount: number,
-    public possibilities: TypeVariable[] = []
-  ) {}
-
-  get sources() {
-    return this.possibilities;
-  }
-
-  pump(): [boolean, Type | null] {
-    if (
-      this.targetPossibilityCount != null &&
-      this.possibilities.length === this.targetPossibilityCount &&
-      this.possibilities.every((tVar) => tVar.type)
-    ) {
-      return [
-        true,
-        typeAnyOf(this.possibilities.map((tVar) => tVar.type)) ?? null,
-      ];
-    } else {
-      return [false, null];
-    }
-  }
 }
 
 export class TypeDependencyConditionalExpression implements TypeDependency {
@@ -65,7 +39,7 @@ export class TypeDependencyConditionalExpression implements TypeDependency {
   pump(): [boolean, Type | null] {
     // TODO: we can use progressive improvement (eg, we can know the conditional test, then actually choose a side)
     if (this.ifTrue.type && this.ifFalse.type) {
-      return [true, typeAnyOf([this.ifTrue.type, this.ifFalse.type]) || null];
+      return [true, typeUnion(this.ifTrue.type, this.ifFalse.type) || null];
     } else {
       return [false, null];
     }
@@ -84,20 +58,10 @@ export class TypeDependencyCopyReturnToCall implements TypeDependency {
   }
 
   pump(): [boolean, Type | null] {
-    let callee =
-      this.callee.type instanceof PtrType
-        ? this.callee.type.asFunction
-        : this.callee.type;
+    let callee = PtrType.deref(this.callee.type);
 
-    if (
-      (callee instanceof FunctionType ||
-        callee instanceof PartialFunctionType) &&
-      callee.returns
-    ) {
-      return [true, callee.returns];
-    } else {
-      return [false, null];
-    }
+    if (callee instanceof FunctionType) return [true, callee.returns];
+    else return [false, null];
   }
 }
 
@@ -113,10 +77,9 @@ export class TypeDependencyCopyArgsToFunction implements TypeDependency {
   }
 
   pump(): [boolean, Type | null] {
-    if (this.args.every((a) => a.type)) {
+    if (this.target.type instanceof PtrType && this.args.every((a) => a.type)) {
       const types = this.args.map((tVar) => defined(tVar.type));
-      // return [true, new WithFunctionArgsType(types)]
-      return [true, new PartialFunctionType(new TupleType(types), undefined)];
+      return [true, FunctionType.makeArgTypesSetter(types)];
     } else {
       return [false, null];
     }
@@ -135,12 +98,21 @@ export class TypeDependencyReturnType implements TypeDependency {
   }
 
   pump(): [boolean, Type | null] {
-    if (this.returnedValues.length === 0) {
-      return [true, new PartialFunctionType(undefined, new UndefinedType())];
-    } else if (this.returnedValues.every((tVar) => tVar.type)) {
-      const tt =
-        typeAnyOf(this.returnedValues.map((tVar) => tVar.type)) ?? null;
-      return [true, tt && new PartialFunctionType(undefined, tt)];
+    if (
+      this.target.type instanceof PtrType &&
+      this.returnedValues.every((tVar) => tVar.type)
+    ) {
+      let newRet =
+        this.returnedValues.length === 0
+          ? new UndefinedType()
+          : typeUnionAll(this.returnedValues.map((tVar) => tVar.type)) ??
+            new InvalidType();
+
+      if (newRet) {
+        return [true, FunctionType.makeRetTypeSetter(newRet)];
+      } else {
+        return [false, null];
+      }
     } else {
       return [false, null];
     }
@@ -251,11 +223,8 @@ export class TypeDependencyDataStructureRead implements TypeDependency {
 
   pump(): [boolean, Type | null] {
     if (this.object.type && this.property.type) {
-      if (this.object.type instanceof ArrayType) {
-        return [true, this.object.type.readProperty(this.property.type)];
-      } else {
-        return [true, null];
-      }
+      const prop = this.object.type?.readProperty?.(this.property.type);
+      return [true, prop ?? null];
     } else {
       return [false, null];
     }

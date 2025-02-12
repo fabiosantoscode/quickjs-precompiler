@@ -23,7 +23,7 @@ import { TypeEnvironment } from "./type-environment";
  */
 import { propagateTypes } from "./propagation";
 import { defined, invariant } from "../utils";
-import { FunctionType, PtrType, TypeVariable } from "./type";
+import { FunctionType, PtrType, typeEqual, TypeVariable } from "./type";
 
 it("propagates types to vars", () => {
   expect(
@@ -41,92 +41,42 @@ it("propagates types to vars", () => {
 
 it("allows variables to have multiple types (by ignoring those)", () => {
   expect(
-    testTypes(`
-      let number = 1
+    testTypesLast(`
+      let number = 1;
       number;
-      number = ''
+      number = '';
       number;
     `)
-  ).toMatchInlineSnapshot(`
-    "/* undefined */ let number = /* Number */ (1);
-    /* undefined */ (number);
-    /* String */ (number = '');
-    /* undefined */ (number);"
-  `);
+  ).toMatchInlineSnapshot(`"Invalid"`);
 });
 
 it("marks functions", () => {
   expect(
-    testTypes(`
-      function func1(x) { return x }
+    testTypesLast(`
+      function func1() { }
+      func1
     `)
-  ).toMatchInlineSnapshot(`
-    "/* Function(func1@2) */ const func1 = /* Function(func1@2) */ (function func1(/* Unknown */ (x)) {
-      return /* Unknown */ (x);
-    });"
-  `);
-});
-
-it("understands reassignment (to the wrong type)", () => {
-  expect(
-    testTypes(`
-      let val = 1
-      val = 'wrong'
-      val
-    `)
-  ).toMatchInlineSnapshot(`
-    "/* undefined */ let val = /* Number */ (1);
-    /* String */ (val = 'wrong');
-    /* undefined */ (val);"
-  `);
+  ).toMatchInlineSnapshot(`"Function(func1@2): Undefined"`);
 });
 
 it("understands reassignment of mutable vars is not to be followed", () => {
   // The binding below is not followed because it reassigns a mutable var
   expect(
-    testTypes(`
+    testTypesLast(`
       let func2 = x => x
       func2 = x => x
       func2
     `)
-  ).toMatchInlineSnapshot(`
-    "/* Ptr Invalid */ let func2 = /* Ptr Invalid */ ((/* Unknown */ (x)) => {
-      return /* Unknown */ (x);
-    });
-    /* Ptr Invalid */ const inlineFunc_1 = /* Ptr Invalid */ ((/* Unknown */ (x)) => {
-      return /* Unknown */ (x);
-    });
-    /* Ptr Invalid */ (func2 = inlineFunc_1);
-    /* Ptr Invalid */ (func2);"
-  `);
-});
-
-it("reference types will copy the original", () => {
-  expect(
-    testTypes(`
-      function func1(x) { return x }
-      func1;
-    `)
-  ).toMatchInlineSnapshot(`
-    "/* Function(func1@2) */ const func1 = /* Function(func1@2) */ (function func1(/* Unknown */ (x)) {
-      return /* Unknown */ (x);
-    });
-    /* Function(func1@2) */ (func1);"
-  `);
+  ).toMatchInlineSnapshot(`"Ptr Invalid"`);
 });
 
 it("marks the return type", () => {
   expect(
-    testTypes(`
+    testTypesLast(`
       function func1() { return 1 }
       func1()
     `)
-  ).toMatchInlineSnapshot(`
-    "/* Function(func1@2): Number */ const func1 = /* Function(func1@2): Number */ (function func1() {
-      return /* Number */ (1);
-    });
-    /* Number */ (func1());"
-  `);
+  ).toMatchInlineSnapshot(`"Number"`);
 });
 
 it("marks the return type (identity function)", () => {
@@ -195,6 +145,7 @@ it("understands function return types", () => {
     .init as CallExpression;
   const callee = call.callee as ArrowFunctionExpression;
 
+  expect(env.getNodeType(callee)).toBeInstanceOf(PtrType);
   const funcType = (env.getNodeType(callee) as PtrType).target as FunctionType;
   const xArgType = env.getBindingTypeVar("x@1");
   const xPassedArgType = env.getNodeType(call.arguments[0]);
@@ -208,12 +159,15 @@ it("understands function return types", () => {
           TypeVariable {
             "comment": "ArrowFunctionExpression expression",
             "type": PtrType {
-              "target": FunctionType {
-                "displayName": "?",
-                "params": ArrayType {
-                  "arrayItem": NumberType {},
+              "_target": MutableCell {
+                "target": FunctionType {
+                  "displayName": "?",
+                  "identity": Symbol(),
+                  "params": ArrayType {
+                    "arrayItem": NumberType {},
+                  },
+                  "returns": NumberType {},
                 },
-                "returns": NumberType {},
               },
             },
           },
@@ -234,21 +188,7 @@ it("understands function return types", () => {
   expect(callType).toMatchInlineSnapshot(`NumberType {}`);
 });
 
-it("follows array item type", () => {
-  expect(
-    testTypes(`
-      const x = new Array()
-      x[1] = 2
-      x[2]
-    `)
-  ).toMatchInlineSnapshot(`
-    "/* Array Number */ const x = /* Array */ (new Array());
-    /* Number */ (x[1] = 2);
-    /* Optional Number */ (x[2]);"
-  `);
-});
-
-it("follows simple assignments (new tech)", () => {
+it("follows simple assignments", () => {
   expect(
     testTypes(`
       let x = 1;
@@ -262,21 +202,7 @@ it("follows simple assignments (new tech)", () => {
   `);
 });
 
-it("follows simple function types (new tech)", () => {
-  expect(
-    testTypes(`
-      const x = () => 1
-      x()
-    `)
-  ).toMatchInlineSnapshot(`
-    "/* Function(?): Number */ const x = /* Function(?): Number */ (() => {
-      return /* Number */ (1);
-    });
-    /* Number */ (x());"
-  `);
-});
-
-it("follows reassignments of function types (new tech)", () => {
+it("follows reassignments of function types", () => {
   expect(
     testTypes(`
       const x = () => 1
@@ -294,7 +220,7 @@ it("follows reassignments of function types (new tech)", () => {
   `);
 });
 
-it("finds invalid usages of functions after a reassignment (new tech)", () => {
+it("finds invalid usages of functions after a reassignment", () => {
   expect(
     testTypes(`
       const x = (y) => y + 1
@@ -303,12 +229,12 @@ it("finds invalid usages of functions after a reassignment (new tech)", () => {
       y('wrong type')
     `)
   ).toMatchInlineSnapshot(`
-    "/* Ptr Invalid */ const x = /* Ptr Invalid */ ((/* Number */ (y)) => {
-      return /* Number */ (y + 1);
+    "/* Ptr Invalid */ const x = /* Ptr Invalid */ ((/* Invalid */ (y)) => {
+      return /* Invalid */ (y + 1);
     });
-    /* Unknown */ (x(1));
+    /* Invalid */ (x(1));
     /* Ptr Invalid */ const y = /* Ptr Invalid */ (x);
-    /* undefined */ (y('wrong type'));"
+    /* Invalid */ (y('wrong type'));"
   `);
 });
 
@@ -336,11 +262,11 @@ it("handles polymorphic function arg types (by ignoring them)", () => {
       let string = id('1')
     `)
   ).toMatchInlineSnapshot(`
-    "/* Ptr Invalid */ let id = /* Ptr Invalid */ ((/* undefined */ (x)) => {
+    "/* Ptr Invalid */ let id = /* Ptr Invalid */ ((/* Invalid */ (x)) => {
       return /* Number */ (1);
     });
-    /* undefined */ let number = /* undefined */ (id(1));
-    /* undefined */ let string = /* undefined */ (id('1'));"
+    /* Invalid */ let number = /* Invalid */ (id(1));
+    /* Invalid */ let string = /* Invalid */ (id('1'));"
   `);
 });
 
@@ -364,23 +290,16 @@ it("finds usages of functions after being passed into an arg (new tech)", () => 
 
 it("finds usages of functions after being passed into an arg (2)", () => {
   expect(
-    testTypes(`
+    testTypesLast(`
       const callerWithNum = cb => cb(1)
       const callMeWithNum = num => num
       callerWithNum(callMeWithNum)
+      callMeWithNum
     `)
-  ).toMatchInlineSnapshot(`
-    "/* Function(?): Number */ const callerWithNum = /* Function(?): Number */ ((/* Function(?): Number */ (cb)) => {
-      return /* Number */ (cb(1));
-    });
-    /* Function(?): Number */ const callMeWithNum = /* Function(?): Number */ ((/* Number */ (num)) => {
-      return /* Number */ (num);
-    });
-    /* Number */ (callerWithNum(callMeWithNum));"
-  `);
+  ).toMatchInlineSnapshot(`"Function(?): Number"`);
 });
 
-it("finds usage invalid of functions after being passed into an arg (new tech)", () => {
+it("finds invalid usage of functions after being passed into an arg (new tech)", () => {
   expect(
     testTypes(`
       const callerWithNum = cb => cb(1)
@@ -389,14 +308,14 @@ it("finds usage invalid of functions after being passed into an arg (new tech)",
       callerWithNum(callMeWithStr)
     `)
   ).toMatchInlineSnapshot(`
-    "/* Function(?) */ const callerWithNum = /* Function(?) */ ((/* Ptr Invalid */ (cb)) => {
-      return /* undefined */ (cb(1));
+    "/* Ptr Invalid */ const callerWithNum = /* Ptr Invalid */ ((/* Ptr Invalid */ (cb)) => {
+      return /* Invalid */ (cb(1));
     });
-    /* Ptr Invalid */ const callMeWithStr = /* Ptr Invalid */ ((/* String */ (str)) => {
-      return /* String */ (str);
+    /* Ptr Invalid */ const callMeWithStr = /* Ptr Invalid */ ((/* Invalid */ (str)) => {
+      return /* Invalid */ (str);
     });
-    /* Unknown */ (callMeWithStr('correct type'));
-    /* Unknown */ (callerWithNum(callMeWithStr));"
+    /* Invalid */ (callMeWithStr('correct type'));
+    /* Invalid */ (callerWithNum(callMeWithStr));"
   `);
 });
 
@@ -407,21 +326,28 @@ it("array contents", () => {
       arrayNew[1] = 1
     `)
   ).toMatchInlineSnapshot(`
-    "/* Array Number */ const arrayNew = /* Array */ (new Array());
+    "/* Array Number */ const arrayNew = /* Array Number */ (new Array());
     /* Number */ (arrayNew[1] = 1);"
   `);
 
   expect(
-    testTypes(`
+    testTypesLast(`
       const arrayNew = new Array()
       arrayNew[1] = 1
-      const optionalNumber = arrayNew[0]
+      arrayNew[0]
     `)
-  ).toMatchInlineSnapshot(`
-    "/* Array Number */ const arrayNew = /* Array */ (new Array());
-    /* Number */ (arrayNew[1] = 1);
-    /* Optional Number */ const optionalNumber = /* Optional Number */ (arrayNew[0]);"
-  `);
+  ).toMatchInlineSnapshot(`"Optional Number"`);
+});
+
+it("array contents when passed to a func", () => {
+  expect(
+    testTypesLast(`
+      const func = (arr) => arr[1] = 2
+      const arrayAssignedElsewhere = new Array()
+      func(arrayAssignedElsewhere)
+      arrayAssignedElsewhere
+    `)
+  ).toMatchInlineSnapshot(`"Array Number"`);
 });
 
 it.todo("array contents (when the array is leaked)");
@@ -455,7 +381,7 @@ it("functional: Sheetjs crc32 code", () => {
     "/* Function(signed_crc_table@2): Array Number */ const signed_crc_table = /* Function(signed_crc_table@2): Array Number */ (function signed_crc_table() {
       /* Number */ let c = /* Number */ (0);
       /* Number */ let n = /* Number */ (0);
-      /* Array Number */ let table = /* Array */ (new Array(256));
+      /* Array Number */ let table = /* Array Number */ (new Array(256));
       autoLabel_1: for (n = 0; n != 256; ++n) {
         /* Number */ (c = n);
         /* Number */ (c = c & 1 ? -306674912 ^ c >>> 1 : c >>> 1);
@@ -476,14 +402,23 @@ it("functional: Sheetjs crc32 code", () => {
 function testTypes(code: string) {
   const env = new TypeEnvironment();
   let basicProgram = parseJsFile(code);
-  propagateTypes(env, basicProgram);
+  propagateTypes(env, basicProgram, true);
   return testShowAllTypes(env, basicProgram);
+}
+
+function testTypesLast(code: string) {
+  const env = new TypeEnvironment();
+  let basicProgram = parseJsFile(code);
+  propagateTypes(env, basicProgram, true);
+  let last = defined(basicProgram.body.at(-1));
+  invariant(last.type === "ExpressionStatement");
+  return env.getNodeType(last.expression)?.toString();
 }
 
 function testTypesEnv(code: string): [Program, TypeEnvironment] {
   const env = new TypeEnvironment();
   let basicProgram = parseJsFile(code);
-  propagateTypes(env, basicProgram);
+  propagateTypes(env, basicProgram, true);
   return [basicProgram, env];
 }
 

@@ -327,8 +327,9 @@ function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
                     right instanceof NumberType
                   ) {
                     return new NumberType();
+                  } else {
+                    return null;
                   }
-                  return null;
                 }
               );
               break;
@@ -372,27 +373,23 @@ function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
           );
 
           if (node.left.type === "MemberExpression") {
-            // TODO also handle other types (eg Identifier)
-
-            invariant(
-              node.left.object.type === "Identifier",
-              "TODO: other membex"
-            );
-
+            recurse(node.left.object);
             recurse(node.right);
 
             if (node.left.computed) {
               recurse(node.left.property);
-            }
 
-            env.addTypeDependency(
-              new TypeDependencyDataStructureWrite(
-                "write (member expression)",
-                env.getNodeTypeVar(node.left.object),
-                env.getNodeTypeVar(node.left.property),
-                env.getNodeTypeVar(node.right)
-              )
-            );
+              env.addTypeDependency(
+                new TypeDependencyDataStructureWrite(
+                  "write (member expression)",
+                  env.getNodeTypeVar(node.left.object),
+                  env.getNodeTypeVar(node.left.property),
+                  env.getNodeTypeVar(node.right)
+                )
+              );
+            } else {
+              todo("writing to non-computed properties");
+            }
 
             return true;
           } else if (node.left.type === "Identifier") {
@@ -410,14 +407,18 @@ function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
         break;
       }
       case "MemberExpression": {
-        env.addTypeDependency(
-          new TypeDependencyDataStructureRead(
-            "read",
-            env.getNodeTypeVar(node),
-            env.getNodeTypeVar(node.object),
-            env.getNodeTypeVar(node.property)
-          )
-        );
+        if (node.computed) {
+          env.addTypeDependency(
+            new TypeDependencyDataStructureRead(
+              "read",
+              env.getNodeTypeVar(node),
+              env.getNodeTypeVar(node.object),
+              env.getNodeTypeVar(node.property)
+            )
+          );
+        } else {
+          todo("reading non-computed properties from data structures");
+        }
         break;
       }
       case "ConditionalExpression": {
@@ -566,30 +567,18 @@ function pass3PumpDependencies(
 
     for (const [target, depSet] of allDeps) {
       let originalType = PtrType.deref(target.type);
-      let newType: Type | undefined;
 
-      const mutations = TypeMutation.withMutationsCollected(() => {
-        newType = depSet.reduce(
-          (acc: Type | undefined, dep: TypeDependency, i): Type | undefined => {
-            if (acc == null && i > 0) return undefined;
+      const [newType, mutations] = TypeMutation.withMutationsCollected(() => {
+        return depSet.reduce((acc, dep): Type => {
+          let [_done, type] = dep.pump();
 
-            let [_done, type] = dep.pump();
-
-            if (type && acc) {
-              return typeUnion(type, acc) ?? new InvalidType();
-            } else {
-              return type || acc;
-            }
-          },
-          target.type
-        );
+          return typeUnion(type ?? new UnknownType(), acc);
+        }, target.type);
       });
 
-      if (newType != undefined) {
-        for (const mutation of mutations) {
-          const changed = mutation.mutate();
-          if (changed) anyProgress = true;
-        }
+      for (const mutation of mutations) {
+        const changed = mutation.mutate();
+        if (changed) anyProgress = true;
       }
 
       // We moved forward
@@ -605,9 +594,9 @@ function pass3PumpDependencies(
       if (PtrType.deref(source.type) instanceof InvalidType) {
         for (const target of targets) {
           if (target.type instanceof PtrType) {
-            if (!(target.type._target.target instanceof InvalidType)) {
+            if (!(target.type._target.type instanceof InvalidType)) {
               anyProgress = true;
-              target.type._target.target = new InvalidType();
+              target.type._target.type = new InvalidType();
             }
           } else {
             if (!(target.type instanceof InvalidType)) {

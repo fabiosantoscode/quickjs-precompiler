@@ -3,7 +3,7 @@ import { TypeMutation } from "./mutation";
 
 /** Expressions will have a TypeVariable, and when some type is known, it will be placed inside. */
 export class TypeVariable {
-  constructor(public type?: Type, public comment?: string) {}
+  constructor(public type: Type, public comment?: string) {}
 
   [Symbol.for("nodejs.util.inspect.custom")]() {
     let ret = `TypeVariable(`;
@@ -21,17 +21,18 @@ export class TypeVariable {
 export interface Type {
   toString(): string;
   _isEqual(other: Type): boolean;
-  /** Used to implement typeUnion. May call `TypeMutation.recordMutation` to yield a secondary return value. */
-  _union(other: Type): Type | undefined;
-  readProperty?(key: Type): Type | undefined;
+  /** Used to implement typeUnion.
+   * May call `TypeMutation.recordMutation` to yield a secondary return value. */
+  _union(other: Type): Type;
+  readProperty?(key: Type): Type;
 }
 
 const _ptrIsUnique = new WeakSet();
 /** PtrType represents a mutable pointer, but it's immutable. This is the mutable bit. */
 export class MutableCell {
-  constructor(public target: Type) {
-    invariant(!_ptrIsUnique.has(target));
-    _ptrIsUnique.add(target);
+  constructor(public type: Type) {
+    invariant(!_ptrIsUnique.has(type));
+    _ptrIsUnique.add(type);
   }
 }
 
@@ -41,28 +42,28 @@ export class PtrType implements Type {
     return new PtrType(new MutableCell(type));
   }
   get target(): Type {
-    return this._target.target;
+    return this._target.type;
   }
   get asFunction(): FunctionType | undefined {
     return this.target instanceof FunctionType ? this.target : undefined;
   }
   toString() {
-    return this._target.target instanceof InvalidType
+    return this._target.type instanceof InvalidType
       ? `Ptr Invalid`
-      : this._target.target.toString();
+      : this._target.type.toString();
   }
-  static deref(t: Type | PtrType | undefined): Type | undefined {
+  static deref(t: Type | PtrType): Type {
     return t instanceof PtrType ? t.target : t;
   }
   _isEqual(other: Type): boolean {
     return other instanceof PtrType && other._target === this._target;
   }
-  _union(other: Type): Type | undefined {
-    let union =
-      typeUnion(this.target, PtrType.deref(other)) ?? new InvalidType();
+  _union(other: Type) {
+    let union = typeUnion(this.target, PtrType.deref(other));
 
-    if (typeEqual(union, this.target)) return this;
-    else {
+    if (typeEqual(union, this.target)) {
+      return this;
+    } else {
       if (other instanceof PtrType) {
         TypeMutation.recordMutation(other._target, union);
       }
@@ -71,7 +72,7 @@ export class PtrType implements Type {
     }
   }
   readProperty(prop: Type) {
-    return this._target.target.readProperty?.(prop);
+    return this._target.type.readProperty?.(prop) ?? new InvalidType();
   }
 }
 
@@ -82,7 +83,7 @@ export class UnknownType implements Type {
   _isEqual(other: Type): boolean {
     return other instanceof UnknownType;
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type) {
     return other;
   }
 }
@@ -94,7 +95,7 @@ export class InvalidType implements Type {
   _isEqual(other: Type) {
     return other instanceof InvalidType;
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type) {
     return this;
   }
 }
@@ -106,9 +107,10 @@ export class NumberType implements Type {
   _isEqual(other: Type): boolean {
     return other instanceof NumberType;
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type): Type {
     if (other instanceof NumericType) return other;
     if (other instanceof NumberType) return this;
+    return new InvalidType();
   }
 }
 
@@ -119,9 +121,10 @@ export class NumericType implements Type {
   _isEqual(other: Type) {
     return other instanceof NumericType;
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type) {
     if (other instanceof NumericType) return this;
     if (other instanceof NumberType) return this;
+    return new InvalidType();
   }
 }
 
@@ -132,8 +135,9 @@ export class StringType implements Type {
   _isEqual(other: Type): boolean {
     return other instanceof StringType;
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type): Type {
     if (other instanceof StringType) return this;
+    return new InvalidType();
   }
 }
 
@@ -144,8 +148,9 @@ export class BooleanType implements Type {
   _isEqual(other: Type): boolean {
     return other instanceof BooleanType;
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type): Type {
     if (other instanceof BooleanType) return this;
+    return new InvalidType();
   }
 }
 
@@ -156,8 +161,9 @@ export class UndefinedType implements Type {
   _isEqual(other: Type) {
     return other instanceof UndefinedType;
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type): Type {
     if (other instanceof UndefinedType) return this;
+    return new InvalidType();
   }
 }
 
@@ -168,8 +174,9 @@ export class NullType implements Type {
   _isEqual(other: Type) {
     return other instanceof NullType;
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type): Type {
     if (other instanceof NullType) return this;
+    return new InvalidType();
   }
 }
 
@@ -189,14 +196,14 @@ export class OptionalType implements Type {
   _isEqual(o: Type): boolean {
     return o instanceof OptionalType && this.innerType._isEqual(o.innerType);
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type): Type {
     const innerUnion =
       other instanceof OptionalType
         ? typeUnion(this.innerType, other.innerType)
         : typeUnion(this.innerType, other);
-    if (innerUnion?._isEqual(this.innerType)) return this;
-    if (innerUnion != null) return new OptionalType(innerUnion);
-    else return undefined;
+    if (innerUnion instanceof InvalidType) return innerUnion;
+    if (innerUnion._isEqual(this.innerType)) return this;
+    return new OptionalType(innerUnion);
   }
 }
 
@@ -229,18 +236,20 @@ export class FunctionType implements Type {
       typeEqual(this.returns, other.returns)
     );
   }
-  _union(other: Type): Type | undefined {
+  _union(other: Type): Type {
     if (other instanceof FunctionType) {
       const params = typeUnion(this.params, other.params);
       const returns = typeUnion(this.returns, other.returns);
 
       // functions are completely unique
       if (this.identity && other.identity && this.identity !== other.identity) {
-        return undefined;
+        return new InvalidType();
       }
 
-      if (!params || !returns) {
-        return undefined;
+      if (params instanceof InvalidType) {
+        return params;
+      } else if (returns instanceof InvalidType) {
+        return returns;
       } else if (
         typeEqual(params, this.params) &&
         typeEqual(returns, this.returns)
@@ -256,7 +265,7 @@ export class FunctionType implements Type {
         );
       }
     }
-    return undefined;
+    return new InvalidType();
   }
 }
 
@@ -267,8 +276,8 @@ export class ObjectType implements Type {
   _isEqual(other: Type): boolean {
     todo();
   }
-  _union(_other: Type): Type | undefined {
-    return undefined; // messy repercussions
+  _union(_other: Type): Type {
+    todo();
   }
 }
 
@@ -296,14 +305,17 @@ export class ArrayType implements Type {
       other instanceof ArrayType && typeEqual(other.arrayItem, this.arrayItem)
     );
   }
-  _union(other: Type): ArrayType | TupleType | undefined {
-    if (other instanceof TupleType) return other._union(this);
+  _union(other: Type): ArrayType | TupleType | InvalidType {
+    if (other instanceof TupleType) {
+      return other._union(this);
+    }
     if (other instanceof ArrayType) {
       const inside = typeUnion(this.arrayItem, other.arrayItem);
-      if (inside?._isEqual(this.arrayItem)) return this;
-      if (inside == null) return undefined;
+      if (inside instanceof InvalidType) return inside;
+      else if (inside._isEqual(this.arrayItem)) return this;
       else return new ArrayType(inside);
     }
+    return new InvalidType();
   }
 }
 
@@ -316,7 +328,7 @@ export class TupleType implements Type {
   readProperty(key: Type) {
     if (key instanceof NumberType) {
       const union = typeUnionAll(this.items);
-      return union ? new OptionalType(union) : new InvalidType();
+      return union instanceof InvalidType ? union : new OptionalType(union);
     } else {
       return new InvalidType();
     }
@@ -333,46 +345,38 @@ export class TupleType implements Type {
       other instanceof TupleType && typeArrayEqual(this.items, other.items)
     );
   }
-  _union(other: Type): TupleType | ArrayType | undefined {
+  _union(other: Type): TupleType | ArrayType | InvalidType {
     if (other instanceof TupleType) {
-      if (!this.items) return other;
       const unionized = typeArrayUnion(this.items, other.items);
-      if (unionized == null) return undefined;
+      if (unionized instanceof InvalidType) return unionized;
+      if (unionized === this.items) return this;
       if (unionized === other.items) return other;
       return new TupleType(unionized);
     }
     if (other instanceof ArrayType) {
-      if (!this.items) return other;
       const content = typeUnionAll([...this.items, other.arrayItem]);
-      if (content == null) return undefined;
+      if (content instanceof InvalidType) return content;
       if (content === other.arrayItem) return other;
       return new ArrayType(content);
     }
+    return new InvalidType();
   }
 }
 
-const typeArrayUnion = (
-  me: Type[] | undefined,
-  they: Type[] | undefined
-): Type[] | undefined => {
-  if (me == null || they == null) return undefined;
-  if (me.length !== they.length) return undefined;
+const typeArrayUnion = (me: Type[], they: Type[]): Type[] | InvalidType => {
+  if (me.length !== they.length) return new InvalidType();
   let reuse = true;
   const out: Type[] = [];
   for (let i = 0; i < me.length; i++) {
     const u = typeUnion(me[i], they[i]);
-    if (u == null) return undefined;
+    if (u instanceof InvalidType) return u;
     if (reuse) reuse = u._isEqual(they[i]);
     out.push(u);
   }
   return reuse ? me : out;
 };
 
-export function typeUnion(
-  t1: Type | undefined,
-  t2: Type | undefined
-): Type | undefined {
-  if (t1 == null || t2 == null) return undefined;
+export function typeUnion(t1: Type, t2: Type): Type {
   if (Object.getPrototypeOf(t1) !== Object.getPrototypeOf(t2)) {
     if (t1 instanceof UnknownType) return t2;
     if (t2 instanceof UnknownType) return t1;
@@ -388,23 +392,18 @@ export function typeUnion(
   return t1._union(t2);
 }
 
-export function typeUnionAll(types: (Type | undefined)[] | undefined) {
-  if (types?.length) {
-    return types.reduce((a, b) => a && b && typeUnion(a, b));
+export function typeUnionAll(types: Type[]) {
+  if (types.length) {
+    return types.reduce((a, b) => typeUnion(a, b));
   } else {
-    return undefined;
+    return new InvalidType();
   }
 }
 
-export function typeEqual(t1: Type | undefined, t2: Type | undefined) {
-  if (t1 == null || t2 == null) return t1 == t2;
+export function typeEqual(t1: Type, t2: Type) {
   return t1._isEqual(t2);
 }
 
-function typeArrayEqual(
-  t1: (Type | undefined)[] | undefined,
-  t2: (Type | undefined)[] | undefined
-) {
-  if (t1 == null || t2 == null) return t1 == t2;
+function typeArrayEqual(t1: Type[], t2: Type[]) {
   return t1.length === t2.length && t1.every((t1, i) => typeEqual(t1, t2[i]));
 }

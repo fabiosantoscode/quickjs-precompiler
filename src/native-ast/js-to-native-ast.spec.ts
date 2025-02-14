@@ -166,9 +166,7 @@ function statToNAST(node: ExpressionOrStatement): NASTExpression {
         type: "NASTVariableDeclaration",
         declaration: {
           type: "NASTDeclaration",
-          declarationType: typeToNAST(
-            typeEnv.getBindingTypeVar(id.uniqueName).type
-          ),
+          declarationType: typeToNAST(typeEnv.getBindingType(id.uniqueName)),
           uniqueName: id.uniqueName,
           loc,
         },

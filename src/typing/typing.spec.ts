@@ -160,7 +160,7 @@ it("understands function return types", () => {
             "comment": "ArrowFunctionExpression expression",
             "type": PtrType {
               "_target": MutableCell {
-                "target": FunctionType {
+                "type": FunctionType {
                   "displayName": "?",
                   "identity": Symbol(),
                   "params": ArrayType {
@@ -464,10 +464,7 @@ export function testShowAllTypes(env: TypeEnvironment, program: Program) {
           ...node,
           params: node.params.map((param) => {
             invariant(param.type === "Identifier");
-            return wrap(
-              param,
-              env.getBindingTypeVar(param.uniqueName).type
-            ) as any;
+            return wrap(param, env.getBindingType(param.uniqueName)) as any;
           }),
           body: wrapAll(node.body) as BlockStatement,
         };

@@ -69,12 +69,8 @@ export class TypeEnvironment {
     }
   }
 
-  getTypeDependencies(byTarget: TypeVariable | AnyNode) {
-    if (byTarget instanceof TypeVariable) {
-      return this.#typeDependencies.get(byTarget);
-    } else {
-      return this.#typeDependencies.get(this.getNodeTypeVar(byTarget));
-    }
+  getTypeDependencies(byTarget: TypeVariable) {
+    return this.#typeDependencies.get(byTarget);
   }
 
   getTypeDependents(byTarget: TypeVariable) {

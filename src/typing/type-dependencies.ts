@@ -39,7 +39,7 @@ export class TypeDependencyConditionalExpression implements TypeDependency {
   pump(): [boolean, Type | null] {
     // TODO: we can use progressive improvement (eg, we can know the conditional test, then actually choose a side)
     if (this.ifTrue.type && this.ifFalse.type) {
-      return [true, typeUnion(this.ifTrue.type, this.ifFalse.type) || null];
+      return [true, typeUnion(this.ifTrue.type, this.ifFalse.type)];
     } else {
       return [false, null];
     }
@@ -105,14 +105,9 @@ export class TypeDependencyReturnType implements TypeDependency {
       let newRet =
         this.returnedValues.length === 0
           ? new UndefinedType()
-          : typeUnionAll(this.returnedValues.map((tVar) => tVar.type)) ??
-            new InvalidType();
+          : typeUnionAll(this.returnedValues.map((tVar) => tVar.type));
 
-      if (newRet) {
-        return [true, FunctionType.makeRetTypeSetter(newRet)];
-      } else {
-        return [false, null];
-      }
+      return [true, FunctionType.makeRetTypeSetter(newRet)];
     } else {
       return [false, null];
     }
@@ -223,8 +218,8 @@ export class TypeDependencyDataStructureRead implements TypeDependency {
 
   pump(): [boolean, Type | null] {
     if (this.object.type && this.property.type) {
-      const prop = this.object.type?.readProperty?.(this.property.type);
-      return [true, prop ?? null];
+      const prop = this.object.type.readProperty?.(this.property.type);
+      return [true, prop ?? new InvalidType()];
     } else {
       return [false, null];
     }

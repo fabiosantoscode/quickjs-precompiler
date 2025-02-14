@@ -9,9 +9,9 @@ export class TypeMutation {
   ) {}
 
   mutate(): boolean {
-    const newType = typeUnion(this.mutableType.target, this.mutateTo);
-    const didMutate = !typeEqual(this.mutableType.target, newType);
-    this.mutableType.target = newType ?? new InvalidType();
+    const newType = typeUnion(this.mutableType.type, this.mutateTo);
+    const didMutate = !typeEqual(this.mutableType.type, newType);
+    this.mutableType.type = newType;
     return didMutate;
   }
 
@@ -24,13 +24,14 @@ export class TypeMutation {
   }
 
   /** While `cb` is running, track calls to `recordMutations` and return them */
-  static withMutationsCollected(cb: () => void): TypeMutation[] {
+  static withMutationsCollected(cb: () => Type): [Type, TypeMutation[]] {
     invariant(this.mutations == null);
     this.mutations = [];
 
     try {
-      cb();
-      return this.mutations;
+      const type = cb();
+      const mutations = this.mutations;
+      return [type, mutations];
     } finally {
       this.mutations = undefined;
     }

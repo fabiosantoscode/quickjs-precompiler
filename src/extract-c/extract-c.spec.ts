@@ -80,7 +80,7 @@ it("can extract declarations", () => {
         return 1
       }
       let notCFunc = function notCFunc() {
-        throw 1
+        unknownGlobalRef()
         return cFunc()
       }
     `)

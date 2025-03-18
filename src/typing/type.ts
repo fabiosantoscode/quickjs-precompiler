@@ -37,14 +37,14 @@ export class MutableCell {
 }
 
 export class PtrType implements Type {
-  private constructor(public _target: MutableCell) {}
+  constructor(public _target: MutableCell) {}
   static fromMutableType(type: Type) {
     return new PtrType(new MutableCell(type));
   }
   get target(): Type {
     return this._target.type;
   }
-  get asFunction(): FunctionType | undefined {
+  asFunction(): FunctionType | undefined {
     return this.target instanceof FunctionType ? this.target : undefined;
   }
   toString() {
@@ -334,11 +334,8 @@ export class TupleType implements Type {
     }
   }
   nthFunctionParameter(n: number): Type | undefined {
-    if (n > 0 && n < this.items.length) {
-      return this.items[n] ?? undefined;
-    } else {
-      return undefined;
-    }
+    invariant(n >= 0);
+    return this.items.at(n);
   }
   _isEqual(other: Type): boolean {
     return (
@@ -354,6 +351,10 @@ export class TupleType implements Type {
       return new TupleType(unionized);
     }
     if (other instanceof ArrayType) {
+      if (other.arrayItem instanceof UnknownType) {
+        // an array of unknown length is a placeholder-array. It can become a tuple.
+        return this;
+      }
       const content = typeUnionAll([...this.items, other.arrayItem]);
       if (content instanceof InvalidType) return content;
       if (content === other.arrayItem) return other;

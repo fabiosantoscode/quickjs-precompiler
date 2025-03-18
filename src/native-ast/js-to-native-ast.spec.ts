@@ -19,7 +19,9 @@ import {
   NumberType,
   NumericType,
   OptionalType,
+  PtrType,
   StringType,
+  TupleType,
   Type,
   UndefinedType,
 } from "../typing/type";
@@ -144,20 +146,27 @@ function statToNAST(node: ExpressionOrStatement): NASTExpression {
 
       if (isFunction(init)) {
         invariant(id.type === "Identifier");
-        let t = asInstance(defined(typeEnv.getNodeType(id)), FunctionType);
+        let t = defined(
+          asInstance(defined(typeEnv.getNodeType(id)), PtrType).asFunction()
+        );
+        let params =
+          init.params.length === 0
+            ? []
+            : t.params instanceof TupleType
+            ? t.params.items.map((value, i) => [
+                ofType(init.params[i], "Identifier").uniqueName,
+                defined(typeToNAST(value)),
+              ])
+            : unreachable(
+                "function argument type must be known, but was " +
+                  t.params.toString()
+              );
         return {
           type: "NASTFunction",
           body: bodyToNAST(init.body.body),
           uniqueName: id.uniqueName,
-          returnType: typeToNAST(t.returns.type),
-          parameters: Object.fromEntries(
-            defined(t.params).map((value, i) => {
-              return [
-                ofType(init.params[i], "Identifier").uniqueName,
-                defined(typeToNAST(value.type)),
-              ];
-            })
-          ),
+          returnType: typeToNAST(t.returns),
+          parameters: Object.fromEntries(params),
           loc,
         };
       }
@@ -184,14 +193,21 @@ function statToNAST(node: ExpressionOrStatement): NASTExpression {
           todo("not implemented: operator " + node.operator);
         case "!==":
           todo("not implemented: operator " + node.operator);
+
+        // Float comparison
         case "<":
-          todo("not implemented: operator " + node.operator);
         case "<=":
-          todo("not implemented: operator " + node.operator);
         case ">":
-          todo("not implemented: operator " + node.operator);
         case ">=":
-          todo("not implemented: operator " + node.operator);
+          invariant(typeEnv.getNodeType(node.left) instanceof NumberType);
+          invariant(typeEnv.getNodeType(node.right) instanceof NumberType);
+          return {
+            type: "NASTComparison",
+            operator: node.operator,
+            left: statToNAST(node.left as any),
+            right: statToNAST(node.right as any),
+            loc,
+          };
         case "<<":
           todo("not implemented: operator " + node.operator);
         case ">>":
@@ -258,7 +274,27 @@ function statToNAST(node: ExpressionOrStatement): NASTExpression {
       throw bork(node);
     }
     case "UnaryExpression": {
-      throw bork(node);
+      // throw bork(node);
+      switch (node.operator) {
+        case "-":
+        case "+":
+        case "!":
+        case "~": {
+          invariant(typeEnv.getNodeType(node) instanceof NumberType, () => `node should be NumberType, was ${typeEnv.getNodeType(node)}`)
+          return {
+            type: 'NASTUnary',
+            operator: node.operator,
+            operand: statToNAST(node.argument),
+            loc
+          }
+        }
+        case "typeof":
+          throw bork(node)
+        case "void":
+          throw bork(node)
+        case "delete":
+          throw bork(node)
+      }
     }
     case "UpdateExpression": {
       throw bork(node);
@@ -286,6 +322,15 @@ function statToNAST(node: ExpressionOrStatement): NASTExpression {
       throw bork(node);
     }
     case "CallExpression": {
+      return {
+        type: "NASTCall",
+        arguments: node.arguments.map((arg) =>
+          arg.type === "SpreadElement" ? unreachable() : statToNAST(arg)
+        ),
+        callee: ofType(statToNAST(node.callee), "NASTIdentifier"),
+        loc,
+      };
+      console.log(node);
       throw bork(node);
     }
     case "NewExpression": {
@@ -325,7 +370,11 @@ function statToNAST(node: ExpressionOrStatement): NASTExpression {
       return statToNAST(node.expression);
     }
     case "BlockStatement": {
-      throw bork(node);
+      return {
+        type: "NASTDo",
+        body: node.body.map((node) => statToNAST(node)),
+        loc,
+      };
     }
     case "DebuggerStatement": {
       throw bork(node);
@@ -541,43 +590,44 @@ it("math operations", () => {
   expect(
     testToNAST(`
       function mul(a, b) {
-        return a;
+        return a * b;
       }
       mul(1, 2)
     `)
   ).toMatchInlineSnapshot(`
-    (function number mul (number a number b)
-      (return (* a b)))
-  `);
-
-  /*
-  return
-
-  expect(
-      testToNAST(`
-        function add(a, b) {
-          return a + b;
-        }
-      `)
-  ).toMatchInlineSnapshot(`
-    (function number add (number a number b)
-      (return (+ a b)))
+    "(function numeric mul@1 (number a@1 number b@1)
+      (return (* a@1 b@1)))
+    (call mul@1 1 2)"
   `);
 
   expect(
-      testToNAST(`
-    function complexMath(a, b, c) {
-      return (a + b) * c;
-    }
-  `)
+    testToNAST(`
+      function add(a, b) {
+        return a + b;
+      }
+      add(1, 1)
+    `)
   ).toMatchInlineSnapshot(`
-    (function number complexMath (number a number b number c)
-      (return (* (+ a b) c)))
+    "(function number add@1 (number a@1 number b@1)
+      (return (+ a@1 b@1)))
+    (call add@1 1 1)"
   `);
-  */
+
+  expect(
+    testToNAST(`
+      function complexMath(a, b, c) {
+        return (a + b) * c;
+      }
+      complexMath(1, 2, 3)
+    `)
+  ).toMatchInlineSnapshot(`
+    "(function numeric complexMath@1 (number a@1 number b@1 number c@1)
+      (return (* (+ a@1 b@1) c@1)))
+    (call complexMath@1 1 2 3)"
+  `);
 });
 
-it("conditionals", () => {
+it.only("conditionals", () => {
   expect(
     testToNAST(`
       function max(a, b) {
@@ -587,13 +637,17 @@ it("conditionals", () => {
           return b;
         }
       }
+      max(1, 2)
     `)
   ).toMatchInlineSnapshot(`
-    (function number max (number a number b)
-      (if (> a b)
-        (return a)
-        (else
-          (return b))))
+    "(function number max@1 (number a@1 number b@1)
+      (if (> a@1 b@1)
+      (do
+      (return a@1))
+      (else
+        (do
+      (return b@1)))))
+    (call max@1 1 2)"
   `);
 
   expect(
@@ -604,6 +658,7 @@ it("conditionals", () => {
         }
         return x;
       }
+      abs(1)
     `)
   ).toMatchInlineSnapshot(`
     (function number abs (number x)

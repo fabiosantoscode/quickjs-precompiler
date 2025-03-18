@@ -26,6 +26,8 @@ export type NASTExpression =
   | NASTJump
   | NASTUnary
   | NASTBinary
+  | NASTComparison
+  | NASTUnary
   | NASTCall
   | NASTAssignment
   | NASTIf
@@ -100,6 +102,13 @@ export interface NASTStructDefinition extends _NASTNodeCommon {
 export interface NASTBinary extends _NASTNodeCommon {
   type: "NASTBinary";
   operator: "+" | "-" | "*" | "/" | "%";
+  left: NASTExpression;
+  right: NASTExpression;
+}
+
+export interface NASTComparison extends _NASTNodeCommon {
+  type: "NASTComparison";
+  operator: "<" | "<=" | ">" | ">=";
   left: NASTExpression;
   right: NASTExpression;
 }

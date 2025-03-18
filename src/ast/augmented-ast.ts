@@ -349,7 +349,7 @@ export type LogicalOperator = "||" | "&&" | "??";
 
 export interface MemberExpression extends Node {
   type: "MemberExpression";
-  object: Expression | Super;
+  object: Expression// TODO: | Super;
   property: Expression | PrivateIdentifier;
   computed: boolean;
   optional: boolean;
@@ -364,7 +364,7 @@ export interface ConditionalExpression extends Node {
 
 export interface CallExpression extends Node {
   type: "CallExpression";
-  callee: Expression | Super;
+  callee: Expression// TODO: | Super;
   arguments: Array<Expression | SpreadElement>;
   optional: boolean;
 }
@@ -691,7 +691,7 @@ export type AnyNode =
   | SwitchCase
   | CatchClause
   | Property
-  | Super
+  // TODO: | Super
   | SpreadElement
   | TemplateElement
   | AssignmentProperty
@@ -723,7 +723,7 @@ export type AnyNode2 =
   | Statement
   | Expression
   | ModuleDeclaration
-  | Super
+  // TODO: | Super
   | Pattern;
 
 // AUGMENTED: we should be able to know what is an expression

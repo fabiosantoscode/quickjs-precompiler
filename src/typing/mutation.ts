@@ -15,7 +15,7 @@ export class TypeMutation {
     return didMutate;
   }
 
-  /** Appended during Type['_union'] */
+  /** Appended during Type['_union']. Undefined outside of withMutationsCollected callback */
   static mutations?: TypeMutation[];
 
   static recordMutation(mutableType: MutableCell, mutateTo: Type) {

@@ -163,8 +163,10 @@ it("understands function return types", () => {
                 "type": FunctionType {
                   "displayName": "?",
                   "identity": Symbol(),
-                  "params": ArrayType {
-                    "arrayItem": NumberType {},
+                  "params": TupleType {
+                    "items": [
+                      NumberType {},
+                    ],
                   },
                   "returns": NumberType {},
                 },

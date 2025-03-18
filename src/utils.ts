@@ -113,7 +113,12 @@ export function asInstance<T>(
   klass: { new (...args: any[]): T }
 ): T {
   if (!(thing instanceof klass)) {
-    const e = new Error("Expected instance of " + thing.name);
+    const e = new Error(
+      "Expected instance of " +
+        klass.name +
+        ", got " +
+        (thing == null ? thing : thing.__proto__.constructor.name)
+    );
     Error.captureStackTrace(e, asInstance);
     throw e;
   }

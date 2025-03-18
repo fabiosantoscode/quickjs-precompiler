@@ -476,7 +476,7 @@ function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
               ([funcType]) => {
                 return (
                   (funcType instanceof PtrType &&
-                    funcType.asFunction?.params.nthFunctionParameter(i)) ||
+                    funcType.asFunction()?.params.nthFunctionParameter(i)) ||
                   null
                 );
               }

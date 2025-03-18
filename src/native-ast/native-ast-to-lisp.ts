@@ -106,6 +106,7 @@ function statementToLisp(node: NASTNode, indent: number): string {
     case "NASTIdentifier":
       return node.uniqueName;
     case "NASTBinary":
+    case "NASTComparison":
       return `(${node.operator} ${statementToLisp(
         node.left,
         indent

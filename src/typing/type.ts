@@ -1,9 +1,18 @@
+import { arrayAccessIsNeverUndefined } from "../assumptions";
 import { invariant, todo, unreachable } from "../utils";
 import { TypeMutation } from "./mutation";
 
 /** Expressions will have a TypeVariable, and when some type is known, it will be placed inside. */
 export class TypeVariable {
   constructor(public type: Type, public comment?: string) {}
+
+  get validType() {
+    if (this.type instanceof InvalidType || this.type instanceof UnknownType) {
+      return null
+    } else {
+      return this.type
+    }
+  }
 
   [Symbol.for("nodejs.util.inspect.custom")]() {
     let ret = `TypeVariable(`;
@@ -24,7 +33,16 @@ export interface Type {
   /** Used to implement typeUnion.
    * May call `TypeMutation.recordMutation` to yield a secondary return value. */
   _union(other: Type): Type;
-  readProperty?(key: Type): Type;
+  readProperty?(key: Type | string): Type;
+  _writeProperty?(key: Type | string, value: Type): Type;
+  /** Inject args info into the function (returns the function) */
+  _withArgs?(args: Type[]): Type
+  /** Inject args info into a method (returns the object) */
+  _withMethodArgs?(methodName: string, args: Type[]): Type
+  /** Get return value from function. Invalid arguments can return InvalidType */
+  getRet?(args: Type[]): Type
+  /** Get return value from method. Invalid arguments can return InvalidType */
+  getMethodRet?(methodName: string, args: Type[]): Type
 }
 
 const _ptrIsUnique = new WeakSet();
@@ -43,6 +61,13 @@ export class PtrType implements Type {
   }
   get target(): Type {
     return this._target.type;
+  }
+  get validTarget() {
+    if (this._target.type instanceof InvalidType || this._target.type instanceof UnknownType) {
+      return null
+    } else {
+      return this._target.type
+    }
   }
   asFunction(): FunctionType | undefined {
     return this.target instanceof FunctionType ? this.target : undefined;
@@ -71,8 +96,44 @@ export class PtrType implements Type {
       return this; // will mutate later
     }
   }
-  readProperty(prop: Type) {
+  readProperty(prop: Type | string) {
     return this._target.type.readProperty?.(prop) ?? new InvalidType();
+  }
+  writeProperty(prop: Type | string, value: Type) {
+    const withProp = (this._target.type._writeProperty?.(prop, value))
+      ?? new InvalidType()
+
+    TypeMutation.recordMutation(this._target, withProp)
+    return this
+  }
+
+  // Function return types (custom and native functions and methods)
+  getFunctionRet(withArgs: Type[]): Type {
+    return this._target.type.getRet?.(withArgs) ?? new UnknownType()
+  }
+  getMethodRet(methodName: string, withArgs: Type[]): Type {
+    return this._target.type.getMethodRet?.(methodName, withArgs) ?? new UnknownType()
+  }
+  setFunctionRet(ret: Type): Type {
+    // Only called by a TypeDependency that gets the funcret from the ret statements
+    if (this._target.type instanceof FunctionType) {
+      TypeMutation.recordMutation(this._target, this._target.type._withRet(ret))
+    }
+    return this
+  }
+
+  // Function arg types (copied into custom, and validated against native)
+  setFunctionArgs(newArgs: Type[]): Type {
+    if (this._target.type._withArgs) {
+      TypeMutation.recordMutation(this._target, this._target.type._withArgs(newArgs))
+    }
+    return this
+  }
+  setMethodArgs(methodName: string, newArgs: Type[]): Type {
+    if (this._target.type._withMethodArgs) {
+      TypeMutation.recordMutation(this._target, this._target.type._withMethodArgs(methodName, newArgs))
+    }
+    return this
   }
 }
 
@@ -89,6 +150,7 @@ export class UnknownType implements Type {
 }
 
 export class InvalidType implements Type {
+  constructor(public comment?: string) {}
   toString() {
     return "Invalid";
   }
@@ -97,6 +159,9 @@ export class InvalidType implements Type {
   }
   _union(other: Type) {
     return this;
+  }
+  readProperty(prop: Type | string) {
+    return new InvalidType()
   }
 }
 
@@ -108,21 +173,6 @@ export class NumberType implements Type {
     return other instanceof NumberType;
   }
   _union(other: Type): Type {
-    if (other instanceof NumericType) return other;
-    if (other instanceof NumberType) return this;
-    return new InvalidType();
-  }
-}
-
-export class NumericType implements Type {
-  toString() {
-    return "Numeric";
-  }
-  _isEqual(other: Type) {
-    return other instanceof NumericType;
-  }
-  _union(other: Type) {
-    if (other instanceof NumericType) return this;
     if (other instanceof NumberType) return this;
     return new InvalidType();
   }
@@ -137,6 +187,42 @@ export class StringType implements Type {
   }
   _union(other: Type): Type {
     if (other instanceof StringType) return this;
+    return new InvalidType();
+  }
+  readProperty(propName: string | Type) {
+    switch (propName) {
+      case "length": return new NumberType();
+    }
+    return new InvalidType('Unknown String property ' + propName);
+  }
+  _withMethodArgs(methodName: string, withArgs: Type[]): Type {
+    switch (methodName) {
+      case "slice":
+      case "charCodeAt":
+        return this
+    }
+    return new InvalidType()
+  }
+  getMethodRet(methodName: string, args: Type[]): Type {
+    switch (methodName) {
+      case "slice": {
+        const validArgs =
+          args.length <= 2 && args.every(a => a instanceof NumberType);
+        if (validArgs) {
+          return new StringType();
+        } else {
+          return new UnknownType()
+        }
+      }
+      case "charCodeAt": {
+        invariant(arrayAccessIsNeverUndefined);
+        if (args.length === 1 && args[0] instanceof NumberType) {
+          return new NumberType();
+        } else {
+          return new UnknownType()
+        }
+      }
+    }
     return new InvalidType();
   }
 }
@@ -217,12 +303,6 @@ export class FunctionType implements Type {
   static forASTNode(displayName: string | undefined) {
     return new FunctionType(displayName, undefined, undefined, Symbol());
   }
-  static makeArgTypesSetter(types: Type[]) {
-    return new FunctionType("?", new TupleType(types), undefined);
-  }
-  static makeRetTypeSetter(ret: Type) {
-    return new FunctionType("?", undefined, ret);
-  }
   toString() {
     let ret = !(this.returns instanceof UnknownType)
       ? ": " + this.returns.toString()
@@ -238,6 +318,9 @@ export class FunctionType implements Type {
   }
   _union(other: Type): Type {
     if (other instanceof FunctionType) {
+      // TODO do we need this complex union stuff?
+      // Use an assertion to make sure it's never triggered, then delete
+
       const params = typeUnion(this.params, other.params);
       const returns = typeUnion(this.returns, other.returns);
 
@@ -267,6 +350,74 @@ export class FunctionType implements Type {
     }
     return new InvalidType();
   }
+  _withArgs(args: Type[]): Type {
+    const joinedArgs = typeUnion(this.params, new TupleType(args))
+    if (joinedArgs instanceof TupleType || joinedArgs instanceof ArrayType) {
+      return new FunctionType(
+        this.displayName,
+        joinedArgs,
+        this.returns,
+        this.identity,
+      )
+    }
+    return joinedArgs // invalid or unknown
+  }
+  _withMethodArgs(methodName: string, newArgs: Type[]): Type {
+    switch (methodName) {
+      case "call": {
+        if (newArgs.length > 1) {
+          return this._withArgs(newArgs.slice(1)) // TODO thisValue
+        }
+        else break
+      }
+      case "apply": {
+        if (newArgs.length === 2 && newArgs[1] instanceof TupleType) {
+          // TODO thisValue
+          return this._withArgs(newArgs[1].items)
+        }
+        else break
+      }
+    }
+    return new UnknownType()
+  }
+  getRet(whenArgs: Type[]): Type {
+    const joined = typeUnion(this.params, new TupleType(whenArgs))
+    if (!(joined instanceof InvalidType)) {
+      return this.returns
+    } else {
+      return joined
+    }
+  }
+  getMethodRet(methodName: string, whenArgs: Type[]) {
+    switch (methodName) {
+      case "call": {
+        if (whenArgs.length > 1) {
+          return this.getRet(whenArgs.slice(1)) // TODO thisValue
+        }
+        else break
+      }
+      case "apply": {
+        if (whenArgs.length === 2 && whenArgs[1] instanceof TupleType) {
+          // TODO thisValue
+          return this.getRet(whenArgs[1].items)
+        }
+        else break
+      }
+    }
+    return new UnknownType()
+  }
+  _withRet(retType: Type) {
+    const joinedRetVal = typeUnion(this.returns, retType)
+    if (isValidType(joinedRetVal)) {
+      return new FunctionType(
+        this.displayName,
+        this.params,
+        joinedRetVal,
+        this.identity,
+      )
+    }
+    return joinedRetVal // invalid or unknown
+  }
 }
 
 export class ObjectType implements Type {
@@ -282,20 +433,79 @@ export class ObjectType implements Type {
 }
 
 export class ArrayType implements Type {
-  constructor(public arrayItem: Type) {}
-  toString() {
-    if (this.arrayItem instanceof UnknownType) {
-      return `Array`;
-    } else {
-      return `Array ${this.arrayItem.toString()}`;
-    }
+  constructor(public arrayItem: Type) {
+    invariant(!(this.arrayItem instanceof InvalidType))
   }
-  readProperty(key: Type) {
+  toString() {
+    return `Array ${this.arrayItem.toString()}`;
+  }
+  readProperty(key: Type | string) {
     if (key instanceof NumberType) {
-      return new OptionalType(this.arrayItem);
+      if (arrayAccessIsNeverUndefined) {
+        return this.arrayItem;
+      } else {
+        return new OptionalType(this.arrayItem);
+      }
+    } else if (key === 'length') {
+      return new NumberType()
     } else {
       return new InvalidType();
     }
+  }
+  _writeProperty(key: Type | string, value: Type) {
+    if (key instanceof NumberType || Number.isInteger(+key)) {
+      return this._union(new ArrayType(value))
+    } else if (key === 'length') {
+      return this // just a resize
+    } else {
+      return new InvalidType()
+    }
+  }
+  getMethodRet(methodName: string, withArgs: Type[]): Type {
+    if (this.arrayItem instanceof InvalidType) {
+      unreachable()
+    }
+    const doNothing = new UnknownType()
+
+    if (this.arrayItem instanceof UnknownType) {
+      return doNothing
+    }
+
+    switch (methodName) {
+      case "slice": {
+        if (withArgs.length <= 2 && withArgs.every(a => a instanceof NumberType)) {
+          return this
+        }
+        return doNothing
+      }
+      case "push": {
+        const pushedType = withArgs.length ? typeUnionAll(withArgs) : new UndefinedType()
+        const newInnerType = typeUnion(pushedType, this.arrayItem)
+        return isValidType(newInnerType) ? new NumberType() : newInnerType
+      }
+    }
+
+    return doNothing
+  }
+  _withMethodArgs(methodName: string, withArgs: Type[]): Type {
+    if (this.arrayItem instanceof InvalidType) {
+      unreachable()
+    }
+    const unknownContents = this.arrayItem instanceof UnknownType
+    const doNothing = this
+
+    switch (methodName) {
+      case "slice": {
+        return unknownContents ? doNothing : new ArrayType(this.arrayItem)
+      }
+      case "push": {
+        const pushed = withArgs.length ? typeUnionAll(withArgs) : new UndefinedType()
+        const pushedT = typeUnion(this.arrayItem, pushed)
+        return isValidType(pushedT) ? new ArrayType(pushedT) : pushedT
+      }
+    }
+
+    return doNothing
   }
   nthFunctionParameter(_n: number): Type | null {
     return this.arrayItem;
@@ -328,7 +538,9 @@ export class TupleType implements Type {
   readProperty(key: Type) {
     if (key instanceof NumberType) {
       const union = typeUnionAll(this.items);
-      return union instanceof InvalidType ? union : new OptionalType(union);
+      if (union instanceof InvalidType) return union
+      if (arrayAccessIsNeverUndefined) return union
+      return new OptionalType(union)
     } else {
       return new InvalidType();
     }
@@ -403,6 +615,11 @@ export function typeUnionAll(types: Type[]) {
 
 export function typeEqual(t1: Type, t2: Type) {
   return t1._isEqual(t2);
+}
+
+export function isValidType(t1: Type | undefined | null): boolean {
+  if (!t1) return false
+  return !(t1 instanceof UnknownType || t1 instanceof InvalidType)
 }
 
 function typeArrayEqual(t1: Type[], t2: Type[]) {

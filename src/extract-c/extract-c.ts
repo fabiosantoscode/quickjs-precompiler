@@ -1,5 +1,5 @@
 import {
-  astFindFunctions,
+  astChildFunctions,
   astRawTraversal,
   goIntoStatements,
   goThroughAll,
@@ -36,17 +36,14 @@ export class _CExtractor {
     );
   }
 
-  findCAbleInProgram() {
+  findCeeAbleInProgram() {
     const bodies: (Program | Function)[] = [];
 
     const findCAbleBranches = (node: Program | Function): boolean => {
-      const functionsWithin = astFindFunctions(node, false).map(
-        (node) => [node, findCAbleBranches(node)] as const
-      );
+      const functionsWithin = astChildFunctions(node).map((node) => [node, findCAbleBranches(node)] as const);
 
-      const thisBody = node.type === "Program" ? node.body : node.body.body;
       const fullyC = functionsWithin.every(([_, isCAble]) => isCAble);
-      const selfC = this.findCAbleInBody(thisBody);
+      const selfC = this.findCeeAbleShallow(node);
 
       // If we're fully C-able, then the parent function will handle partially C-able stuff.
       if (fullyC && selfC) {
@@ -69,8 +66,15 @@ export class _CExtractor {
     return bodies;
   }
 
-  findCAbleInBody(body: StatementOrDeclaration[]) {
-    let fullyTransformable = true;
+  findCeeAbleShallow(node: Program | Function) {
+    const body = node.type === "Program" ? node.body : node.body.body;
+
+    // All bindings must be valid
+    for (const binding of node.closureInfo.variables.values()) {
+      if (!this.env.getValidBindingType(binding.uniqueName)) {
+        return false
+      }
+    }
 
     for (const outerStat of body) {
       for (const node of [
@@ -81,36 +85,22 @@ export class _CExtractor {
           { ...goThroughAll, expressions: true }
         ),
       ]) {
-        if (
-          isFunction(node) ||
-          (node.type === "VariableDeclaration" &&
-            isFunction(node.declarations[0].init))
-        ) {
-          continue;
-        }
+        if (isFunction(node)) continue
 
-        const toC = nodeToC[node.type];
-        // an absent canTransform is merely the node.type check
-        const canTransform =
-          toC &&
-          (!toC.canTransform ||
-            toC.canTransform(node, this.env, this.hygienicNames));
+        const canTransform = nodeToC[node.type]?.canTransform(node, this.env, this.hygienicNames)
+          || isExpression(node) && !this.env.getValidNodeType(node)
 
         if (!canTransform) {
-          fullyTransformable = false;
-        }
-
-        if (isExpression(node) && !this.env.getNodeType(node)) {
-          fullyTransformable = false;
+          return false
         }
       }
     }
 
-    return fullyTransformable;
+    return true
   }
 
   extractDeclarationsInProgram() {
-    const cAble = this.findCAbleInProgram();
+    const cAble = this.findCeeAbleInProgram();
 
     if (cAble.length === 1 && cAble[0].type === "Program") {
       // EVERYTHING IS C

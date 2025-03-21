@@ -1,18 +1,12 @@
+import { statementTypes } from "../ast/augmented-ast";
 import { invariant } from "../utils";
-import {
-  NASTExpression,
-  NASTFunction,
-  NASTNode,
-  NASTProgram,
-  NASTStructDefinition,
-  NASTType,
-} from "./native-ast";
+import { NASTExpression, NASTFunction, NASTNode, NASTProgram, NASTType } from "./native-ast";
 
-export function nastToLisp(program: NASTExpression | NASTProgram): string {
-  if (program.type === "NASTProgram") {
-    return expandDo(program.toplevel, 0, false);
+export function nastToLisp(root: NASTExpression | NASTProgram): string {
+  if (root.type === "NASTProgram") {
+    return expandDo(root.toplevel, 0, false);
   } else {
-    return expandDo(program, 0, false);
+    return expandDo(root, 0, false);
   }
 }
 
@@ -40,91 +34,123 @@ function functionToLisp(func: NASTFunction, indent = 0): string {
     .join(" ")})${expandDo(func.body, 1)})`;
 }
 
-function structDefinitionToLisp(
-  struct: NASTStructDefinition,
-  indent = 0
-): string {
-  const fields = Object.entries(struct.fields)
-    .map(([name, type]) => `${typeToLisp(type)} ${name}`)
-    .join("\n  " + "  ".repeat(indent));
-  return `(struct ${struct.name} (${fields}))`;
-}
+function statementToLisp(node: NASTNode | string, indent: number, breakSingleStatDo = false): string {
+  if (typeof node === 'string') return node
 
-function statementToLisp(node: NASTNode, indent: number): string {
+  const splatDo = (maybeDo: NASTNode) => maybeDo.type === 'NASTDo' ? maybeDo.body : [maybeDo]
+  const indentStr = () => "  ".repeat(indent)
+  const form = (head: string, ...contents: Array<NASTNode | string | null | undefined>) => {
+    head = '(' + head
+    for (const it of contents) if (it) {
+      head += ' ' + statementToLisp(it, indent)
+    }
+    return head + ')'
+  }
+  const formMultiline = (head: string, ...contents: Array<NASTNode | string | null | undefined>) => {
+    head = '(' + head
+    for (const it of contents) if (it) {
+      head += '\n' + '  '.repeat(indent + 1) + statementToLisp(it, indent + 1)
+    }
+    return head + ')'
+  }
+  const formMultilineHeaded = (head: string, sameLineArg: string | NASTNode, ...contents: Array<NASTNode | string | null | undefined>) => {
+    head = '(' + head + ' ' + statementToLisp(sameLineArg, indent + 1)
+    for (const it of contents) if (it) {
+      head += '\n' + '  '.repeat(indent + 1) + statementToLisp(it, indent + 1)
+    }
+    return head + ')'
+  }
   switch (node.type) {
     case "NASTProgram":
       invariant(indent === 0);
-      return nastToLisp(node.toplevel);
-    case "NASTStructDefinition":
-      return structDefinitionToLisp(node, indent);
+      return statementToLisp(node.toplevel, 0);
     case "NASTDo":
-      return `(do\n  ${node.body
-        .map((n) => statementToLisp(n, indent + 1))
-        .join("\n  ")})`;
+      if (breakSingleStatDo && node.body.length === 1) {
+        return statementToLisp(node.body[0], indent, true)
+      }
+      return formMultiline('do', ...node.body)
     case "NASTVariableDeclaration":
-      return `(declare ${typeToLisp(node.declaration.declarationType)} ${
-        node.declaration.uniqueName
-      } ${
-        node.initialValue ? statementToLisp(node.initialValue, indent) : ""
-      })`;
+      return form('declare', typeToLisp(node.declaration.declarationType), node.declaration.uniqueName, node.initialValue)
     case "NASTAssignment":
-      return `(assign ${statementToLisp(node.target, indent)} ${statementToLisp(
-        node.value,
-        indent
-      )})`;
+      return form('assign', node.target, node.value)
     case "NASTIf":
-      return `(if ${statementToLisp(
+      return formMultilineHeaded(
+        'if',
         node.condition,
-        indent
-      )}\n  ${statementToLisp(node.trueBranch, indent + 1)}${
-        node.falseBranch
-          ? `\n  (else\n    ${statementToLisp(node.falseBranch, indent + 1)})`
-          : ""
-      })`;
+        statementToLisp(node.trueBranch, indent + 1, true),
+        isEmptyNAST(node.falseBranch) ? null : statementToLisp(node.falseBranch!, indent + 1, true)
+      )
+    case "NASTIfExpression":
+      return formMultilineHeaded(
+        'if',
+        node.condition,
+        statementToLisp(node.trueBranch, indent + 1, true),
+        isEmptyNAST(node.falseBranch) ? null : statementToLisp(node.falseBranch!, indent + 1, true)
+      )
     case "NASTSwitchCase":
-      return `(switch ${statementToLisp(
+      return formMultilineHeaded(
+        'switch',
         node.discriminant,
-        indent
-      )}\n  ${"  ".repeat(indent)}${[
-        ...node.cases.map(
-          (node) =>
-            `${statementToLisp(node.test, indent + 1)}${statementToLisp(
-              node.body,
-              indent + 1
-            )}`
-        ),
-        `default ${statementToLisp(node.defaultCase, indent + 1)}`,
-      ].join("\n" + "  ".repeat(indent))})`;
-    case "NASTLiteral":
-      if (typeof node === "string") {
-        return JSON.stringify(node);
+        ...node.cases.map(node => `${statementToLisp(node.test, indent + 1)} ${statementToLisp(node.body, indent + 1)}`),
+        `default ${statementToLisp(node.defaultCase, indent + 1)}`
+      )
+    case "NASTLoop":
+      return formMultiline(
+        `loop (${node.uniqueLabel})`,
+        ...splatDo(node.body)
+      )
+    case "NASTJump":
+      return form(node.jumpDirection, node.uniqueLabel)
+    case "NASTLiteralString":
+      return JSON.stringify(node.value)
+    case "NASTLiteralNumber":
+    case "NASTLiteralBoolean":
+    case "NASTLiteralNullish":
+      return `${node.value}`
+    case "NASTLiteralUninitialized":
+      return `(uninitialized)`
+    case "NASTArray":
+      if (node.initialItems.length || node.initialLength?.type === 'NASTLiteralNumber' && node.initialLength.value === 0) {
+        return `[${node.initialItems.map(item => statementToLisp(item, indent + 1)).join(' ')}]`
+      } else {
+        return form('new Array', node.initialLength)
       }
-      if (typeof node === "bigint") {
-        return node + "n";
-      }
-      return `${node.value}`;
+    case "NASTNumericMemberWrite":
+      return form('assign-in', node.object, node.property, node.newValue)
     case "NASTIdentifier":
       return node.uniqueName;
+    case "NASTIdentifierToReference":
+      return '&' + node.uniqueName;
+    case "NASTArrayAccessToReference":
+      return form('array-ref', node.object, node.property)
+    case "NASTPropertyAccessToReference":
+      return form('property-ref', node.object, node.property)
+    case "NASTPtrGet":
+      return form('ptr-get', node.target)
+    case "NASTPtrSet":
+      return form('ptr-set', node.target, node.value)
+    case "NASTStringConcatenation":
+      return form("string-concatenation", node.left, node.right)
     case "NASTBinary":
-    case "NASTComparison":
-      return `(${node.operator} ${statementToLisp(
-        node.left,
-        indent
-      )} ${statementToLisp(node.right, indent)})`;
+    case "NASTFloatComparison":
+      return form(node.operator, node.left, node.right)
     case "NASTUnary":
-      return `(${node.operator} ${statementToLisp(node.operand, indent)})`;
+      return form(node.operator, node.operand)
+    case "NASTIncrementPtrTarget":
+      return form(
+        node.isDecrement ? (node.isPostfix ? 'get-and-decr' : 'decr') : (node.isPostfix ? 'get-and-incr' : 'incr'),
+        node.operand,
+      )
+    case "NASTConversion":
+      return form(node.convType, node.input)
     case "NASTFunction":
       return functionToLisp(node, indent);
     case "NASTCall":
-      return `(call ${node.callee.uniqueName} ${node.arguments
-        .map((n) => statementToLisp(n, indent))
-        .join(" ")})`;
+      return form('call', node.callee.uniqueName, ...node.arguments)
     case "NASTReturn":
-      return `(return ${
-        node.value ? statementToLisp(node.value, indent) : ""
-      })`;
+      return form('return', node.value)
     case "NASTThrow":
-      return `(throw ${node.value ? statementToLisp(node.value, indent) : ""})`;
+      return form('throw', node.value)
     default:
       console.log(node);
       throw new Error(`Unsupported node type: ${(node as any).type}`);
@@ -146,7 +172,13 @@ function typeToLisp(type: NASTType): string {
       return `(array ${typeToLisp(type.contents)})`;
     case "tuple":
       return `(tuple ${type.contents.map(typeToLisp).join(" ")})`;
+    case "function":
+      return `(function ${typeToLisp(type.returns)} (${type.params.map(p => typeToLisp(p)).join(' ')}))`
     default:
       throw new Error(`Unsupported type: ${(type as any).type}`);
   }
+}
+
+function isEmptyNAST(node: NASTNode | null | undefined) {
+  return !node || node.type === 'NASTDo' && node.body.length === 0
 }

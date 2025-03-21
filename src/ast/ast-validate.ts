@@ -146,9 +146,15 @@ class AstValidator extends LocatedErrors {
       case "ForStatement": {
         this.validateLoopParent(stat, parent);
         this.invariantAt(stat, stat.body.type === "BlockStatement");
-        this.invariantAt(stat, stat.init == null || isExpression(stat.init));
+        this.invariantAt(
+          stat,
+          stat.init == null
+          || stat.init.type === 'VariableDeclaration'
+          || isExpression(stat.init)
+        );
 
-        stat.init && this.validateExpression(stat.init);
+        if (stat.init?.type === 'VariableDeclaration') this.validateStatement(stat.init, stat)
+        else if (stat.init) this.validateExpression(stat.init)
         stat.test && this.validateExpression(stat.test);
         stat.update && this.validateExpression(stat.update);
         this.validateStatement(stat.body, stat);
@@ -310,9 +316,9 @@ class AstValidator extends LocatedErrors {
         break;
       }
       case "MemberExpression": {
-        if (expr.object.type !== "Super") {
+        //if (expr.object.type !== "Super") {
           this.validateExpression(expr.object);
-        }
+        //}
         this.invariantAt(
           expr,
           expr.property.type !== "PrivateIdentifier",
@@ -342,11 +348,11 @@ class AstValidator extends LocatedErrors {
           "optional expressions not supported yet"
         );
 
-        this.invariantAt(
+        /*this.invariantAt(
           expr,
           expr.callee.type !== "Super",
           "super not supported yet"
-        );
+        );*/
 
         this.validateExpression(expr.callee);
         for (const arg of expr.arguments) {
@@ -423,7 +429,7 @@ class AstValidator extends LocatedErrors {
       }
       case "MemberExpression": {
         this.invariantAt(pat, pat.property.type !== "PrivateIdentifier");
-        this.invariantAt(pat, pat.object.type !== "Super");
+        //this.invariantAt(pat, pat.object.type !== "Super");
         this.validateExpression(pat.object);
         if (pat.computed) {
           this.validateExpression(pat.property);

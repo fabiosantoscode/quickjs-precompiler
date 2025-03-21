@@ -1,0 +1,3 @@
+/tmp/qjs-precompilerJ54zb7/a.out: \
+ /home/fabio/devel/quickjs-precompiler/c-lib/../vendor/quickjs/quickjs-libc.h \
+ /home/fabio/devel/quickjs-precompiler/c-lib/../vendor/quickjs/quickjs.h

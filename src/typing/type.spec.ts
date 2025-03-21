@@ -3,11 +3,13 @@ import {
   OptionalType,
   NullType,
   NumberType,
-  NumericType,
   StringType,
   Type,
   typeUnion,
   UndefinedType,
+  InvalidType,
+  UnknownType,
+  ArrayType,
 } from "./type";
 
 it("knows how to union types", () => {
@@ -22,10 +24,6 @@ it("knows how to union types", () => {
       [new NumberType(), new NumberType()],
       [new NumberType(), new NumberType()],
       [new NumberType(), new NumberType()],
-
-      [new NumberType(), new NumericType()],
-      [new NumberType(), new NumericType()],
-      [new NumericType(), new NumericType()],
 
       [new StringType(), new StringType()],
       [new StringType(), new StringType()],
@@ -46,9 +44,6 @@ it("knows how to union types", () => {
       "Number            |  Number         =  Number",
       "Number            |  Number         =  Number",
       "Number            |  Number         =  Number",
-      "Number            |  Numeric        =  Numeric",
-      "Number            |  Numeric        =  Numeric",
-      "Numeric           |  Numeric        =  Numeric",
       "String            |  String         =  String",
       "String            |  String         =  String",
       "String            |  String         =  String",
@@ -74,7 +69,81 @@ it("knows how to union composed types", () => {
       "Optional Number   |  Number         =  Optional Number",
       "Optional Number   |  Number         =  Optional Number",
       "Optional Number   |  Number         =  Optional Number",
-      "Optional String   |  Number         =  undefined",
+      "Optional String   |  Number         =  Invalid",
+    ]
+  `);
+});
+
+it("knows how to propagate the invalid type", () => {
+  expect(
+    [
+      [new InvalidType(), new NumberType()],
+      [new NumberType(), new InvalidType()],
+      [new InvalidType(), new InvalidType()],
+    ].map(testUnion)
+  ).toMatchInlineSnapshot(`
+    [
+      "Invalid           |  Number         =  Invalid",
+      "Number            |  Invalid        =  Invalid",
+      "Invalid           |  Invalid        =  Invalid",
+    ]
+  `);
+});
+
+it("knows how to un-propagate the unknown type", () => {
+  expect(
+    [
+      [new UnknownType(), new NumberType()],
+      [new NumberType(), new UnknownType()],
+      [new UnknownType(), new UnknownType()],
+    ].map(testUnion)
+  ).toMatchInlineSnapshot(`
+    [
+      "Unknown           |  Number         =  Number",
+      "Number            |  Unknown        =  Number",
+      "Unknown           |  Unknown        =  Unknown",
+    ]
+  `);
+});
+
+it("knows how to call basic string/array methods", () => {
+  expect(
+    [
+      testMethod(new StringType(), "slice"),
+      testMethod(new StringType(), "slice", new UnknownType()),
+    ].map(String)
+  ).toMatchInlineSnapshot(`
+    [
+      "(String).slice() -> String",
+      "(String).slice(Unknown) -> Unknown",
+    ]
+  `);
+
+  expect(
+    [
+      testMethod(new ArrayType(new NumberType()), "slice", new NumberType()),
+      testMethod(new ArrayType(new NumberType()), "slice", new UnknownType()),
+      testMethod(new ArrayType(new UnknownType()), "slice", new UnknownType()),
+      testMethod(new ArrayType(new UnknownType()), "slice", new NumberType()),
+    ].map(String)
+  ).toMatchInlineSnapshot(`
+    [
+      "(Array Number).slice(Number) -> Array Number",
+      "(Array Number).slice(Unknown) -> Unknown",
+      "(Array Unknown).slice(Unknown) -> Unknown",
+      "(Array Unknown).slice(Number) -> Unknown",
+    ]
+  `);
+});
+
+it("knows how to call array methods that change array contents", () => {
+  expect(
+    [
+      testMethod(new ArrayType(new UnknownType()), "push", new NumberType()),
+    ].map(String)
+  ).toMatchInlineSnapshot(`
+    [
+      "(Array Unknown).push(Number) -> Unknown and becomes Array Number",
     ]
   `);
 });
@@ -88,4 +157,15 @@ function testUnion([t1, t2]: Type[]) {
   let l = t1.toString().padEnd(17);
   let r = t2.toString().padEnd(13);
   return `${l} |  ${r}  =  ${union?.toString()}`;
+}
+
+function testMethod(type: Type, method: string, ...args: Type[]) {
+  let typeStr = String(type);
+
+  const ret = String(type.getMethodRet?.(method, args));
+  const becomes = String(type._withMethodArgs?.(method, args));
+
+  const becomesStr = becomes !== typeStr ? ` and becomes ${becomes}` : "";
+
+  return `(${typeStr}).${method}(${args.join(", ")}) -> ${ret}${becomesStr}`;
 }

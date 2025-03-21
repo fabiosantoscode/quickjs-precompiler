@@ -19,24 +19,36 @@ export type NASTType =
 
 export type NASTExpression =
   | NASTFunction
-  | NASTStructDefinition
   | NASTDo
   | NASTBlock
   | NASTLoop
   | NASTJump
-  | NASTUnary
+  | NASTConversion
   | NASTBinary
-  | NASTComparison
+  | NASTStringConcatenation
+  | NASTFloatComparison
   | NASTUnary
+  | NASTIncrementPtrTarget
   | NASTCall
   | NASTAssignment
   | NASTIf
+  | NASTIfExpression
   | NASTSwitchCase
   | NASTVariableDeclaration
   | NASTReturn
   | NASTThrow
+  | NASTPtrGet
+  | NASTPtrSet
   | NASTIdentifier
-  | NASTLiteral;
+  | NASTIdentifierToReference
+  | NASTLiteralString
+  | NASTLiteralNumber
+  | NASTLiteralBoolean
+  | NASTLiteralNullish
+  | NASTLiteralUninitialized
+  | NASTArray
+  | NASTNumericMemberRead
+  | NASTNumericMemberWrite
 
 export type NASTNode = NASTProgram | NASTExpression;
 
@@ -58,9 +70,37 @@ export interface NASTDeclaration extends _NASTNodeCommon {
   uniqueName: string;
 }
 
+export interface NASTPtrGet extends _NASTNodeCommon {
+  type: 'NASTPtrGet'
+  target: NASTExpression
+}
+
+export interface NASTPtrSet extends _NASTNodeCommon {
+  type: 'NASTPtrSet'
+  target: NASTExpression
+  value: NASTExpression
+}
+
 export interface NASTIdentifier extends _NASTNodeCommon {
   type: "NASTIdentifier";
   uniqueName: string;
+}
+
+export interface NASTIdentifierToReference extends _NASTNodeCommon {
+  type: "NASTIdentifierToReference";
+  uniqueName: string;
+}
+
+export interface NASTPropertyAccessToReference extends _NASTNodeCommon {
+  type: "NASTPropertyAccessToReference"
+  object: NASTExpression
+  property: NASTIdentifier
+}
+
+export interface NASTArrayAccessToReference extends _NASTNodeCommon {
+  type: "NASTArrayAccessToReference"
+  object: NASTExpression
+  property: NASTExpression
 }
 
 export interface NASTDo extends _NASTNodeCommon {
@@ -88,27 +128,60 @@ export interface NASTJump extends _NASTNodeCommon {
   uniqueLabel: string;
 }
 
-export interface NASTLiteral extends _NASTNodeCommon {
-  type: "NASTLiteral";
-  value: string | number | boolean;
+export interface NASTLiteralString extends _NASTNodeCommon {
+  type: "NASTLiteralString";
+  value: string
 }
 
-export interface NASTStructDefinition extends _NASTNodeCommon {
-  type: "NASTStructDefinition";
-  name: string;
-  fields: Record<string, NASTType>;
+export interface NASTLiteralNumber extends _NASTNodeCommon {
+  type: "NASTLiteralNumber";
+  value: number
+}
+
+export interface NASTLiteralBoolean extends _NASTNodeCommon {
+  type: "NASTLiteralBoolean",
+  value: boolean
+}
+
+export interface NASTLiteralNullish extends _NASTNodeCommon {
+  type: "NASTLiteralNullish",
+  value: null | undefined
+}
+
+export interface NASTLiteralUninitialized extends _NASTNodeCommon {
+  type: "NASTLiteralUninitialized",
+  value?: null | undefined
+}
+
+export interface NASTArray extends _NASTNodeCommon {
+  type: "NASTArray"
+  initialLength: NASTExpression,
+  initialItems: NASTExpression[],
+  itemType: NASTType,
+}
+
+export interface NASTConversion extends _NASTNodeCommon {
+  type: "NASTConversion"
+  convType: 'float-bool',
+  input: NASTExpression,
 }
 
 export interface NASTBinary extends _NASTNodeCommon {
   type: "NASTBinary";
-  operator: "+" | "-" | "*" | "/" | "%";
+  operator: "+" | "-" | "*" | "/" | "%" | '>>' | '<<' | '>>>' | '|' | '^' | '&';
   left: NASTExpression;
   right: NASTExpression;
 }
 
-export interface NASTComparison extends _NASTNodeCommon {
-  type: "NASTComparison";
-  operator: "<" | "<=" | ">" | ">=";
+export interface NASTStringConcatenation extends _NASTNodeCommon {
+  type: 'NASTStringConcatenation'
+  left: NASTExpression;
+  right: NASTExpression;
+}
+
+export interface NASTFloatComparison extends _NASTNodeCommon {
+  type: "NASTFloatComparison";
+  operator: "<" | "<=" | ">" | ">=" | "==" | "!=" | "!==" | "===";
   left: NASTExpression;
   right: NASTExpression;
 }
@@ -117,6 +190,13 @@ export interface NASTUnary extends _NASTNodeCommon {
   type: "NASTUnary";
   operator: "+" | "-" | "!" | "~";
   operand: NASTExpression;
+}
+
+export interface NASTIncrementPtrTarget extends _NASTNodeCommon {
+  type: "NASTIncrementPtrTarget";
+  isPostfix: boolean;
+  isDecrement: boolean;
+  target: NASTExpression;
 }
 
 export interface NASTCall extends _NASTNodeCommon {
@@ -136,6 +216,13 @@ export interface NASTIf extends _NASTNodeCommon {
   condition: NASTExpression;
   trueBranch: NASTExpression;
   falseBranch?: NASTExpression;
+}
+
+export interface NASTIfExpression extends _NASTNodeCommon {
+  type: "NASTIfExpression";
+  condition: NASTExpression;
+  trueBranch: NASTExpression;
+  falseBranch: NASTExpression;
 }
 
 export interface NASTSwitchCase extends _NASTNodeCommon {

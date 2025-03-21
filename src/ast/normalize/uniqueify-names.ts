@@ -67,7 +67,7 @@ class UniqueifyVisitor extends LocatedErrors {
 
   startScope(node: Program | Function, closure: TrackedClosure) {
     Object.defineProperty(node, "closureInfo", {
-      value: this.currentClosure,
+      value: closure,
       writable: true,
     });
     this.currentClosure = closure;
@@ -263,8 +263,8 @@ class UniqueifyVisitor extends LocatedErrors {
         }
         return;
       }
-      // loops' heads have a scope
 
+      // loops' heads have a scope
       case "ForStatement":
       case "ForInStatement":
       case "ForOfStatement": {

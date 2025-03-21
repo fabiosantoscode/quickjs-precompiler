@@ -13,7 +13,7 @@ it("extracts functions that could have been C", () => {
     `)
   ).toMatchInlineSnapshot(`
     [
-      "the program",
+      "the whole program is C-able",
     ]
   `);
 });
@@ -35,8 +35,12 @@ it("avoids nasty bits", () => {
     `)
   ).toMatchInlineSnapshot(`
     [
-      "z@2",
-      "y@2",
+      "function z() {
+      return 1;
+    }",
+      "function y() {
+      return 1;
+    }",
     ]
   `);
 });
@@ -63,16 +67,6 @@ it("avoids weird types", () => {
   `);
 });
 
-function testFindCAble(source: string) {
-  const program = parseJsFile(source);
-
-  const extracted = new _CExtractor(program)
-    .findCAbleInProgram()
-    .map((f) => (f.type === "Program" ? "the program" : stringifyJsFile(f)));
-
-  return extracted;
-}
-
 it("can extract declarations", () => {
   expect(
     testExtractDeclarations(`
@@ -80,39 +74,52 @@ it("can extract declarations", () => {
         return 1
       }
       let notCFunc = function notCFunc() {
-        unknownGlobalRef()
+        throw 'not c'
         return cFunc()
       }
     `)
   ).toMatchInlineSnapshot(`
     "// C
     {
-      type: 'CFunctionDeclaration',
-      cBody: Node {
-        type: 'BlockStatement',
-        start: 36,
-        end: 62,
-        loc: SourceLocation {
-          start: [Position],
-          end: [Position],
-          source: 'unknown'
-        },
-        body: [ [Node] ]
+      type: 'VariableDeclaration',
+      kind: 'var',
+      _comment: 'intoCDeclarations',
+      loc: SourceLocation {
+        start: Position { line: 2, column: 18 },
+        end: Position { line: 4, column: 7 },
+        source: 'unknown'
       },
-      cName: 'c_binding_cFunc@1',
-      params: {},
-      retType: NumberType { specificValue: 1 }
+      declarations: [
+        {
+          type: 'VariableDeclarator',
+          loc: [SourceLocation],
+          id: [Object],
+          init: [Object]
+        }
+      ]
     }
     // JS
     let cFunc@1 = function cFunc@2() {
       return c_binding_cFunc@1();
     };
     let notCFunc@1 = function notCFunc@2() {
-      throw 1;
+      throw 'not c';
       return cFunc@1();
     };"
   `);
 });
+
+function testFindCAble(source: string) {
+  const program = parseJsFile(source);
+
+  const extracted = new _CExtractor(program)
+    .findCeeAbleInProgram()
+    .map((f) =>
+      f.type === "Program" ? "the whole program is C-able" : stringifyJsFile(f)
+    );
+
+  return extracted;
+}
 
 function testExtractDeclarations(source: string) {
   const program = parseJsFile(source);

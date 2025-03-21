@@ -129,9 +129,9 @@ export class BindingTracker extends LocatedErrors {
         if (node.computed && node.property.type !== "PrivateIdentifier") {
           this.visit(node.property);
         }
-        if (node.object.type !== "Super") {
+        //if (node.object.type !== "Super") {
           this.visit(node.object);
-        }
+        //}
         return;
       }
       // Strings, nums
@@ -209,9 +209,9 @@ export class BindingTracker extends LocatedErrors {
           this.countBasicCallee(node.callee);
         }
 
-        if (node.callee.type !== "Super") {
+        //if (node.callee.type !== "Super") {
           this.visit(node.callee);
-        }
+        //}
         for (const arg of node.arguments) {
           if (arg.type === "SpreadElement") {
             this.visit(arg.argument);

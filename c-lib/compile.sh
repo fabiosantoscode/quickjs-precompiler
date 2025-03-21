@@ -1,4 +1,6 @@
-set -euo pipefail
+#!/usr/bin/env bash
+
+set -exuo pipefail
 
 # compilation script for C runtimes for precompiled quickjs files
 # Usage: 
@@ -28,13 +30,14 @@ ${QUICKJS}/quickjs-libc.c
 ${QUICKJS}/quickjs.c
 "
 
-GCC_FLAGS="-g -Wall -MMD -MF ${BUILD}/deps.txt -Wno-array-bounds -Wno-format-truncation -fwrapv -lm -ldl -pthread"
+GCC_FLAGS="-g -Wall -MMD -MF ${BUILD}/deps.txt -Wno-array-bounds -Wno-format-truncation"
+GCC_LIBS="-fwrapv -lm -ldl -pthread"
 
 if [ ! -d "${QUICKJS_BUILD}" ]; then
-    rm -rf "${QUICKJS_BUILD}"
-    mkdir -p "${QUICKJS_BUILD}"
+    rm -rf "${QUICKJS_BUILD}.tmp"
+    mkdir -p "${QUICKJS_BUILD}.tmp"
 
-    pushd "${QUICKJS_BUILD}"
+    pushd "${QUICKJS_BUILD}.tmp"
 
     gcc $GCC_FLAGS \
         -D_GNU_SOURCE -DCONFIG_VERSION='"2024-02-14"' -DCONFIG_BIGNUM -DHAVE_CLOSEFROM \
@@ -42,8 +45,12 @@ if [ ! -d "${QUICKJS_BUILD}" ]; then
         -c $QUICKJS_C_FILES
 
     popd
+
+    # Make the build atomic
+    mv "${QUICKJS_BUILD}.tmp" "${QUICKJS_BUILD}"
 fi
 
+mkdir -p build
 pushd build
 
 gcc $GCC_FLAGS \
@@ -51,6 +58,6 @@ gcc $GCC_FLAGS \
     -O2 \
     ${QUICKJS_BUILD}/*.o \
     -o "$1" \
-    -x c - # read C from stdin
+    -x c - $GCC_LIBS # read C from stdin
 
 popd

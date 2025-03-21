@@ -1,6 +1,8 @@
 import { inspect } from "util";
 import { parseJsFile } from "../parse";
 import { TypeEnvironment } from "./type-environment";
+import { TypeVariable } from "./type";
+import { TypeDependency } from "./type-dependencies";
 
 it("can follow a certain binding", () => {
   expect(
@@ -13,8 +15,11 @@ it("can follow a certain binding", () => {
       "NEEDLE@1"
     )
   ).toMatchInlineSnapshot(`
-    "y@1 binding
-    z@1 binding"
+    "- NEEDLE@1 binding
+      - copy initializer into vardecl y@1
+        - y@1 binding
+      - copy initializer into vardecl z@1
+        - z@1 binding"
   `);
 
   expect(
@@ -27,8 +32,11 @@ it("can follow a certain binding", () => {
       "NEEDLE@1"
     )
   ).toMatchInlineSnapshot(`
-    "y@1 binding
-    z@1 binding"
+    "- NEEDLE@1 binding
+      - copy initializer into vardecl y@1
+        - y@1 binding
+          - copy initializer into vardecl z@1
+            - z@1 binding"
   `);
 
   expect(
@@ -41,9 +49,13 @@ it("can follow a certain binding", () => {
       "NEEDLE@1"
     )
   ).toMatchInlineSnapshot(`
-    "BinaryExpression expression
-    y@1 binding
-    z@1 binding"
+    "- NEEDLE@1 binding
+      - "+" operator
+        - BinaryExpression expression
+          - copy initializer into vardecl y@1
+            - y@1 binding
+              - copy initializer into vardecl z@1
+                - z@1 binding"
   `);
 });
 
@@ -58,9 +70,19 @@ it("can follow a certain binding through function calls", () => {
       "NEEDLE@1"
     )
   ).toMatchInlineSnapshot(`
-    "y@2() return value
-    CallExpression expression
-    <anonymous>() return value"
+    "- NEEDLE@1 binding
+      - the function's return value depends on the tVars of return statements
+        - FunctionExpression expression
+          - copy initializer into vardecl y@1
+            - y@1 binding
+              - copy returned value to the function
+                - CallExpression expression
+                  - the function's return value depends on the tVars of return statements
+                    - ArrowFunctionExpression expression
+                      - copy initializer into vardecl z@1
+                        - z@1 binding
+          - function's attached name depends on the function
+            - y@2 binding"
   `);
 
   expect(
@@ -73,10 +95,17 @@ it("can follow a certain binding through function calls", () => {
       "NEEDLE@1"
     )
   ).toMatchInlineSnapshot(`
-    "FunctionExpression expression
-    y@1 binding
-    CallExpression expression
-    z@1 binding"
+    "- NEEDLE@1 binding
+      - the function's return value depends on the tVars of return statements
+        - FunctionExpression expression
+          - copy initializer into vardecl y@1
+            - y@1 binding
+              - copy returned value to the function
+                - CallExpression expression
+                  - copy initializer into vardecl z@1
+                    - z@1 binding
+          - function's attached name depends on the function
+            - y@2 binding"
   `);
 });
 
@@ -91,9 +120,37 @@ it("can follow array items", () => {
       "NEEDLE@1"
     )
   ).toMatchInlineSnapshot(`
-    "MemberExpression expression
-    MemberExpression expression
-    z@1 binding"
+    "- NEEDLE@1 binding
+      - read (member expression)
+        - MemberExpression expression
+      - read (member expression)
+        - MemberExpression expression
+          - copy initializer into vardecl z@1
+            - z@1 binding"
+  `);
+
+  expect(
+    testTraceDownstream(
+      typeEnv(`
+        const arr = new Array()
+        const NEEDLE = 1
+        arr[0] = NEEDLE
+        const z = arr[0]
+      `),
+      "NEEDLE@1"
+    )
+  ).toMatchInlineSnapshot(`
+    "- NEEDLE@1 binding
+      - write (member expression)
+        - arr@1 binding
+          - read (member expression)
+            - MemberExpression expression
+          - read (member expression)
+            - MemberExpression expression
+              - copy initializer into vardecl z@1
+                - z@1 binding
+      - assignment expr returns its assigned value
+        - AssignmentExpression expression"
   `);
 });
 
@@ -103,22 +160,58 @@ const typeEnv = (source: string) => {
 };
 
 function testTraceDownstream(t: TypeEnvironment, uniqueName: string) {
-  return traceDownstream(t, uniqueName)
-    .map((dep) => dep.comment ?? inspect(dep))
-    .join("\n");
+  return (function recurse(
+    trace = traceDownstream(t, uniqueName),
+    prefix = "",
+    isLast = true
+  ) {
+    if (trace.type === "circular") {
+      return prefix + "<circular (" + trace.node.comment + ")>" + "\n";
+    } else {
+      let output = prefix + (isLast ? "- " : "- ") + trace.node.comment + "\n";
+
+      const childPrefix = prefix + "  ";
+      const grandChildPrefix = childPrefix + "  ";
+
+      trace.dependencies.forEach((dep, i) => {
+        const isChildLast = i === trace.dependencies.length - 1;
+        output += `${childPrefix}- ${dep.node.comment}\n`;
+        output += recurse(dep.target, grandChildPrefix, isChildLast);
+      });
+
+      return output;
+    }
+  })().trimEnd();
 }
 
 function traceDownstream(t: TypeEnvironment, uniqueName: string) {
+  type Trace =
+    | { type: "circular"; node: TypeVariable }
+    | {
+        type: "typevar";
+        node: TypeVariable;
+        dependencies: { type: "dep"; node: TypeDependency; target: Trace }[];
+      };
+
   let root = t.getBindingTypeVar(uniqueName);
 
-  const worklist = new Set([root]);
+  const seen = new Set();
 
-  for (const typeVar of worklist) {
-    for (const dependent of t.getTypeDependents(typeVar)) {
-      worklist.add(dependent.target);
+  return (function recurse(typeVar = root): Trace {
+    if (seen.has(typeVar)) {
+      return { type: "circular", node: typeVar };
+    } else {
+      seen.add(typeVar);
+
+      return {
+        type: "typevar",
+        node: typeVar,
+        dependencies: t.getTypeDependents(typeVar).map((dep) => ({
+          type: "dep",
+          node: dep,
+          target: recurse(dep.target),
+        })),
+      };
     }
-  }
-
-  worklist.delete(root);
-  return [...worklist];
+  })();
 }

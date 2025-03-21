@@ -338,6 +338,35 @@ export type AssignmentOperator =
   | "&&="
   | "??=";
 
+const numericBinaryOperators: BinaryOperator[] = ["+", "-", "*", "**", "/", "%", "|", "^", "&", ">>", "<<", ">>>"]
+export function isNumericBinaryOperator(op: BinaryOperator | undefined): op is "+" | "-" | "*" | "**" | "/" | "%" | "|" | "^" | "&" | ">>" | "<<" | ">>>" {
+  return !!op && numericBinaryOperators.includes(op)
+}
+
+const comparisonBinaryOperators: BinaryOperator[] = ["==", "!=", "===", "!==", "<", "<=", ">", ">="]
+export function isComparisonBinaryOperator(op: BinaryOperator | undefined): op is "==" | "!=" | "===" | "!==" | "<" | "<=" | ">" | ">=" {
+  return !!op && comparisonBinaryOperators.includes(op)
+}
+
+export function assignmentOperatorToBinaryOperator(op: AssignmentOperator): BinaryOperator | undefined {
+  const index: Partial<Record<AssignmentOperator, BinaryOperator>> = {
+    '**=': '**',
+    '*=': '*',
+    '/=': '/',
+    '%=': '%',
+    '+=': '+',
+    '-=': '-',
+    '<<=': '<<',
+    '>>=': '>>',
+    '>>>=': '>>>',
+    '&=': '&',
+    '^=': '^',
+    '|=': '|',
+  }
+
+  return index[op]
+}
+
 export interface LogicalExpression extends Node {
   type: "LogicalExpression";
   operator: LogicalOperator;

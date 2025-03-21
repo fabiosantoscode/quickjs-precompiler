@@ -17,7 +17,7 @@ const traverseOptions: Parameters<typeof astRawTraversal>[1] = {
   functions: true,
   labels: false,
   patterns: true,
-  super: false,
+  //super: false,
   switchStatements: true,
   tryCatch: true,
 };

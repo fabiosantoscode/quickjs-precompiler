@@ -5,15 +5,19 @@ import {
 } from "../ast/ast-traversal";
 import {
   AnyNode,
+  AssignmentOperator,
+  assignmentOperatorToBinaryOperator,
   Expression,
+  isComparisonBinaryOperator,
   isExpression,
+  isNumericBinaryOperator,
   isStatement,
   Program,
   StatementOrDeclaration,
 } from "../ast/augmented-ast";
 import { Parents } from "../ast/parents";
 import { compileAndRunC } from "../run";
-import { enumerate, invariant, todo, unreachable } from "../utils";
+import { enumerate, invariant, ofType, todo, unreachable } from "../utils";
 import { TypeMutation } from "./mutation";
 import {
   ArrayType,
@@ -22,12 +26,12 @@ import {
   InvalidType,
   NullType,
   NumberType,
-  NumericType,
   PtrType,
   StringType,
   Type,
   typeEqual,
   typeUnion,
+  typeUnionAll,
   TypeVariable,
   UndefinedType,
   UnknownType,
@@ -35,15 +39,21 @@ import {
 import {
   TypeBack,
   TypeDependency,
-  TypeDependencyConditionalExpression,
   TypeDependencyCopyArgsToFunction,
-  TypeDependencyCopyReturnToCall,
+  TypeDependencyCopyArgsToMethod,
+  TypeDependencyComparisonBinaryOperator,
+  TypeDependencyConditionalExpression,
   TypeDependencyDataStructureRead,
+  TypeDependencyDataStructureReadComputed,
   TypeDependencyDataStructureWrite,
-  TypeDependencyReturnType,
+  TypeDependencyDataStructureWriteComputed,
+  TypeDependencyNumericBinaryOperator,
   TypeDependencyTypeBack,
   TypeDependencyVariableRead,
   TypeDependencyVariableWrite,
+  TypeDependencyCopyMethodReturnToCaller,
+  TypeDependencyCopyReturnToCaller,
+  TypeDependencyCopyReturnStatementsToFunctionRet,
 } from "./type-dependencies";
 import { TypeEnvironment } from "./type-environment";
 
@@ -52,7 +62,7 @@ export function propagateTypes(
   program: Program,
   unitTestMode = false
 ) {
-  /** Pass 0: fill in TypeEnvironment with empty TypeVariable's **/
+  /** Pass 0: fill in TypeEnvironment with empty TypeVariable (containing UnknownType) **/
   pass0AssignTypeVariables(env, program);
 
   /** Pass 1: mark literals, `undefined` and other certainly-known types. */
@@ -93,181 +103,81 @@ function pass0AssignTypeVariables(env: TypeEnvironment, program: Program) {
 function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
   for (const node of astNaiveTraversal(program)) {
     if (isExpression(node)) {
-      /** When you just know that the type is for example NumberType, or equal to another node's type */
-      const just = (theType: Type) => {
+      const expType = getExpressionSelfEvidentType(node)
+      if (expType != null) {
         const tVar = env.getNodeTypeVar(node);
         invariant(tVar.type instanceof UnknownType);
-        tVar.type = theType;
-      };
+        tVar.type = expType;
+      }
+    }
+  }
 
-      switch (node.type) {
-        // Simple ones
-        case "Literal": {
-          if (node.value === null) {
-            just(new NullType());
-            break;
+  function getExpressionSelfEvidentType(node: Expression) {
+    switch (node.type) {
+      // Simple ones
+      case "Literal": {
+        switch (typeof node.value) {
+          case "number": return (new NumberType());
+          case "string": return (new StringType());
+          case "boolean": return (new BooleanType());
+        }
+        if (node.value === null) return (new NullType());
+        invariant(false, "unknown literal " + node.value)
+      }
+      case "ArrayExpression": {
+        return PtrType.fromMutableType(new ArrayType(new UnknownType()));
+      }
+      case "UnaryExpression": {
+        switch (node.operator) {
+          case "+":
+          case "-":
+          case "~": return (new NumberType());
+          case "!": return (new BooleanType());
+          case "delete": return (new BooleanType());
+          case "typeof": return (new StringType());
+          case "void": return (new UndefinedType());
+          default: invariant(false, "unknown unary operator " + (node as any).operator)
+        }
+      }
+      case "FunctionExpression":
+      case "ArrowFunctionExpression": {
+        const func = FunctionType.forASTNode(node.id?.uniqueName);
+        return (PtrType.fromMutableType(func));
+      }
+      case "UpdateExpression": {
+        return new NumberType() // x++ and x-- always return a number
+      }
+      case "BinaryExpression": {
+        if (node.operator === '+') {
+          return // string or number
+        } else if (isNumericBinaryOperator(node.operator)) {
+          return new NumberType()
+        } else if (isComparisonBinaryOperator(node.operator)) {
+          return new BooleanType()
+        } else if (node.operator === 'in' || node.operator === 'instanceof') {
+          return new BooleanType()
+        } else {
+          unreachable()
+        }
+      }
+      case "NewExpression": {
+        if (node.callee.type === "Identifier") {
+          // TODO we should get a function/class
+          // from the environment, and call `construct()` on that.
+          if (node.callee.uniqueName === "Array@global") {
+            return (PtrType.fromMutableType(new ArrayType(new UnknownType())));
           }
-          switch (typeof node.value) {
-            case "number": {
-              just(new NumberType());
-              break;
-            }
-            case "string": {
-              just(new StringType());
-              break;
-            }
-            case "boolean": {
-              just(new BooleanType());
-              break;
-            }
-            case "object": {
-              if (node.value === null) just(new NullType());
-              // regexp later?
-              break;
-            }
-            default: {
-              // later?
-            }
+          if (node.callee.uniqueName === "Set@global") {
+            todo();
           }
-          break;
-        }
-        case "UnaryExpression": {
-          if (node.operator === "delete") {
-            just(new BooleanType());
-          } else if (node.operator === "+") {
-            just(new NumberType());
-          } else if (node.operator === "-") {
-            just(new NumericType());
-          } else if (node.operator === "!") {
-            just(new BooleanType());
-          } else if (node.operator === "typeof") {
-            just(new StringType());
-          } else if (node.operator === "~") {
-            just(new NumberType());
-          } else {
-            invariant(
-              node.operator === "void",
-              () => "unknown operator " + node.operator
-            );
-
-            just(new UndefinedType());
+          if (node.callee.uniqueName === "Map@global") {
+            todo();
           }
-          break;
         }
-        case "FunctionExpression":
-        case "ArrowFunctionExpression": {
-          const func = FunctionType.forASTNode(node.id?.uniqueName);
-          just(PtrType.fromMutableType(func));
-          break;
-        }
-
-        case "ClassExpression": {
-          invariant(false, "TODO");
-          break;
-        }
-        case "AssignmentExpression": {
-          switch (node.operator) {
-            case "=":
-            case "||=":
-            case "&&=":
-            case "??=":
-              break; // Dependent types
-
-            case "+=":
-            case "-=":
-            case "*=":
-            case "/=":
-            case "%=":
-            case "<<=":
-            case ">>=":
-            case ">>>=":
-            case "|=":
-            case "^=":
-            case "&=":
-            case "**=":
-              just(new NumericType());
-              break;
-
-            default:
-              invariant(
-                false,
-                "unknown node operator " + (node as any).operator
-              );
-          }
-          break;
-        }
-        case "UpdateExpression": {
-          switch (node.operator) {
-            case "++":
-            case "--":
-              just(new NumericType());
-              break;
-
-            default:
-              invariant(
-                false,
-                "unknown node operator " + (node as any).operator
-              );
-          }
-          break;
-        }
-        case "BinaryExpression": {
-          switch (node.operator) {
-            case "+":
-              break; // numeric or string
-
-            case "==":
-            case "!=":
-            case "===":
-            case "!==":
-            case "<":
-            case "<=":
-            case ">":
-            case ">=":
-              just(new BooleanType());
-              break;
-
-            case "**":
-            case "-":
-            case "*":
-            case "/":
-            case "%":
-              just(new NumericType());
-              break;
-            case "|":
-            case "^":
-            case "&":
-            case "<<":
-            case ">>":
-            case ">>>":
-              just(new NumberType());
-              break;
-
-            case "instanceof":
-            case "in":
-              just(new BooleanType());
-              break;
-          }
-          break;
-        }
-        case "NewExpression": {
-          if (node.callee.type === "Identifier") {
-            if (node.callee.uniqueName === "Array@global") {
-              just(PtrType.fromMutableType(new ArrayType(new UnknownType())));
-            }
-            if (node.callee.uniqueName === "Set@global") {
-              invariant(false);
-            }
-            if (node.callee.uniqueName === "Map@global") {
-              invariant(false);
-            }
-          }
-          break;
-        }
-        case "TemplateLiteral": {
-          just(new StringType());
-          break;
-        }
+        break;
+      }
+      case "TemplateLiteral": {
+        return (new StringType());
       }
     }
   }
@@ -275,13 +185,14 @@ function pass1MarkSelfEvidentTypes(env: TypeEnvironment, program: Program) {
 
 function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
   function onExpression(node: Expression) {
-    /** When you can refine your knowledge after knowing other types */
+    /** When `node`'s type depends on other types */
     const depends = (
-      dependsOn: (TypeVariable | Expression)[],
+      node: Expression | TypeVariable,
       comment: string,
+      dependsOn: (TypeVariable | Expression)[],
       typeBack: TypeBack
     ) => {
-      const target = env.getNodeTypeVar(node);
+      const target = node instanceof TypeVariable ? node : env.getNodeTypeVar(node);
       invariant(target);
       const dependencies = dependsOn.map((t) => {
         const tVar = t instanceof TypeVariable ? t : env.getNodeTypeVar(t);
@@ -297,127 +208,131 @@ function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
       case "Identifier":
       case "Literal":
       case "ThisExpression":
-      case "ArrayExpression":
       case "ObjectExpression":
       case "UnaryExpression":
       case "UpdateExpression":
         break;
+      case "ArrayExpression": {
+        if (node.elements.length) {
+          depends(
+            env.getNodeTypeVar(node),
+            "Array depends on array contents' types",
+            node.elements.map(node => {
+              invariant(node != null && node.type !== 'SpreadElement')
+              return node
+            }),
+            (elements) => new ArrayType(typeUnionAll(elements)),
+          )
+        }
+
+        break;
+      }
       case "BinaryExpression": {
-        if (node.left.type !== "PrivateIdentifier") {
-          switch (node.operator) {
-            case "==":
-            case "!=":
-            case "===":
-            case "!==":
-            case "<":
-            case "<=":
-            case ">":
-            case ">=":
-            case "<<":
-            case ">>":
-            case ">>>":
-              break;
-            case "+": {
-              depends(
-                [node.left, node.right],
-                '"+" operator',
-                ([left, right]) => {
-                  if (
-                    left instanceof NumberType &&
-                    right instanceof NumberType
-                  ) {
-                    return new NumberType();
-                  } else {
-                    return null;
-                  }
-                }
-              );
-              break;
-            }
-            case "-":
-            case "*":
-            case "/":
-            case "%": {
-              /* TODO: this is already marked as NumericType. Below is a possible refinement.
-              depends(
-                [node.left, node.right],
-                "- * / operators depend on the operands. Could be BigInt or number",
-                ([left, right]) => {
-                  if (
-                    left instanceof NumberType && right instanceof NumberType
-                  ) {
-                    return new NumberType()
-                  }
-                  return null
-                }
-              );
-              break; */
-            }
-            case "|":
-            case "^":
-            case "&":
-            case "in":
-            case "instanceof":
-            case "**":
-              break;
-          }
+        // "+" operator depends on operands
+        invariant(node.left.type !== 'PrivateIdentifier')
+        if (isNumericBinaryOperator(node.operator)) {
+          env.addTypeDependency(new TypeDependencyNumericBinaryOperator(
+            `"${node.operator}" operator`,
+            env.getNodeTypeVar(node),
+            node.operator,
+            env.getNodeTypeVar(node.left),
+            env.getNodeTypeVar(node.right)
+          ))
+        } else if (isComparisonBinaryOperator(node.operator)) {
+          env.addTypeDependency(new TypeDependencyComparisonBinaryOperator(
+            `"${node.operator}" operator`,
+            env.getNodeTypeVar(node),
+            node.operator,
+            env.getNodeTypeVar(node.left),
+            env.getNodeTypeVar(node.right)
+          ))
+        } else {
+          todo()
         }
         break;
       }
       case "AssignmentExpression": {
+        const asBinaryOperator = assignmentOperatorToBinaryOperator(node.operator)
+
         if (node.operator === "=") {
           depends(
-            [env.getNodeTypeVar(node.right)],
+            node,
             "assignment expr returns its assigned value",
+            [env.getNodeTypeVar(node.right)],
             ([assignedValue]) => assignedValue
           );
+        } else if (asBinaryOperator) {
+          env.addTypeDependency(new TypeDependencyNumericBinaryOperator(
+            `"${node.operator}" assignment operator`,
+            env.getNodeTypeVar(node),
+            asBinaryOperator,
+            env.getNodeTypeVar(node.left),
+            env.getNodeTypeVar(node.right)
+          ))
+        } else {
+          todo(node.operator + " assignment operator")
+        }
 
-          if (node.left.type === "MemberExpression") {
-            recurse(node.left.object);
-            recurse(node.right);
+        // Writing to the pattern at the end
+        if (node.left.type === "MemberExpression") {
+          const { left, right } = node
 
-            if (node.left.computed) {
-              recurse(node.left.property);
-
-              env.addTypeDependency(
-                new TypeDependencyDataStructureWrite(
-                  "write (member expression)",
-                  env.getNodeTypeVar(node.left.object),
-                  env.getNodeTypeVar(node.left.property),
-                  env.getNodeTypeVar(node.right)
-                )
-              );
-            } else {
-              todo("writing to non-computed properties");
-            }
-
-            return true;
-          } else if (node.left.type === "Identifier") {
+          if (left.computed) {
             env.addTypeDependency(
-              new TypeDependencyVariableWrite(
-                "writing to an identifier using an AssignmentExpression",
-                env.getBindingTypeVar(node.left.uniqueName),
-                env.getNodeTypeVar(node.right)
+              new TypeDependencyDataStructureWriteComputed(
+                "write (member expression)",
+                env.getNodeTypeVar(left.object),
+                env.getNodeTypeVar(left.property),
+                env.getNodeTypeVar(right)
               )
             );
           } else {
-            todo();
+            const propName = ofType(left.property, 'Identifier').name
+
+            env.addTypeDependency(
+              new TypeDependencyDataStructureWrite(
+                "write property " + propName,
+                env.getNodeTypeVar(left.object),
+                propName,
+                env.getNodeTypeVar(right)
+              )
+            )
           }
+        } else if (node.left.type === "Identifier") {
+          env.addTypeDependency(
+            new TypeDependencyVariableWrite(
+              "writing to an identifier using an AssignmentExpression",
+              env.getBindingTypeVar(node.left.uniqueName),
+              env.getNodeTypeVar(node.right)
+            )
+          );
+        } else {
+          todo();
         }
+
         break;
       }
       case "MemberExpression": {
         if (node.computed) {
           env.addTypeDependency(
-            new TypeDependencyDataStructureRead(
-              "read",
+            new TypeDependencyDataStructureReadComputed(
+              "read (member expression)",
               env.getNodeTypeVar(node),
               env.getNodeTypeVar(node.object),
               env.getNodeTypeVar(node.property)
             )
           );
         } else {
-          todo("reading non-computed properties from data structures");
+          const propName = ofType(node.property, 'Identifier').name
+
+          env.addTypeDependency(
+            new TypeDependencyDataStructureRead(
+              "read property " + propName,
+              env.getNodeTypeVar(node),
+              env.getNodeTypeVar(node.object),
+              propName
+            )
+          )
         }
         break;
       }
@@ -434,37 +349,93 @@ function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
         break;
       }
       case "CallExpression": {
-        env.addTypeDependency(
-          new TypeDependencyCopyReturnToCall(
-            "copy return to call",
-            env.getNodeTypeVar(node),
-            env.getNodeTypeVar(node.callee)
+        // Call expressions will:
+        //  - Pump the arguments into the callee
+        //  - Pump the callee's return value back into the caller
+        //
+        // The innards of the function depend on what kind of function it is.
+        // Is it a JS library method? Or a custom function a user wrote?
+        // If it's a JS library method, it could be variadric or change
+        // return type based on args.
+        // These details are in src/typing/types.ts
+
+        const args = node.arguments.map((arg) => {
+          invariant(arg.type !== "SpreadElement");
+          return env.getNodeTypeVar(arg);
+        })
+        if (node.callee.type === 'MemberExpression') {
+          invariant(!node.callee.computed)
+          invariant(node.callee.property.type === 'Identifier')
+          env.addTypeDependency(
+            new TypeDependencyCopyArgsToMethod(
+              "copy call args to method",
+              env.getNodeTypeVar(node.callee.object),
+              node.callee.property.name,
+              args,
+            )
+          );
+
+          env.addTypeDependency(
+            new TypeDependencyCopyMethodReturnToCaller(
+              "copy the method return value to the caller",
+              env.getNodeTypeVar(node),
+              env.getNodeTypeVar(node.callee.object),
+              node.callee.property.name,
+              args,
+            )
           )
-        );
-        env.addTypeDependency(
-          new TypeDependencyCopyArgsToFunction(
-            "copy args to function",
-            env.getNodeTypeVar(node.callee),
-            node.arguments.map((arg) => {
-              invariant(arg.type !== "SpreadElement");
-              return env.getNodeTypeVar(arg);
-            })
+        } else {
+          env.addTypeDependency(
+            new TypeDependencyCopyArgsToFunction(
+              "copy function args to function",
+              env.getNodeTypeVar(node.callee),
+              args,
+            )
           )
-        );
+
+          env.addTypeDependency(
+            new TypeDependencyCopyReturnToCaller(
+              "copy returned value to the function",
+              env.getNodeTypeVar(node),
+              env.getNodeTypeVar(node.callee),
+              args,
+            )
+          )
+        }
+
         break;
       }
       case "FunctionExpression":
       case "ArrowFunctionExpression": {
-        env.addTypeDependency(
-          new TypeDependencyReturnType(
-            "the function's return value depends on the tVars of return statements",
-            env.getNodeTypeVar(node),
-            [...astTraverseExitNodes(node)].map((node) => {
-              invariant(node.type !== "ThrowStatement");
-              return env.getNodeTypeVar(node.argument);
-            })
+        // Function name, if present, depends on the function's own binding
+        if (node.id) {
+          const binding = env.getBindingTypeVar(node.id.uniqueName)
+          depends(
+            binding,
+            "function's attached name depends on the function",
+            [env.getNodeTypeVar(node)],
+            ([funcType]) => funcType
           )
-        );
+        }
+
+        const returnNodes = [...astTraverseExitNodes(node)]
+        if (returnNodes.some(node => node.type === 'ThrowStatement')) {
+          env.addTypeDependency(
+            new TypeDependencyCopyReturnStatementsToFunctionRet(
+              "this function contains a throw statement, so we invalidate it",
+              env.getNodeTypeVar(node),
+              [new TypeVariable(new InvalidType())]
+            )
+          );
+        } else {
+          env.addTypeDependency(
+            new TypeDependencyCopyReturnStatementsToFunctionRet(
+              "the function's return value depends on the tVars of return statements",
+              env.getNodeTypeVar(node),
+              returnNodes.map((node) => env.getNodeTypeVar(node.argument))
+            )
+          );
+        }
 
         for (const [i, param] of enumerate(node.params)) {
           invariant(param.type === "Identifier");
@@ -473,16 +444,15 @@ function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
               `function parameter #${i}`,
               env.getBindingTypeVar(param.uniqueName),
               [env.getNodeTypeVar(node)],
-              ([funcType]) => {
-                return (
-                  (funcType instanceof PtrType &&
-                    funcType.asFunction()?.params.nthFunctionParameter(i)) ||
-                  null
-                );
-              }
+              ([funcType]) => (
+                (funcType instanceof PtrType &&
+                  funcType.asFunction()?.params.nthFunctionParameter(i)) ||
+                null
+              )
             )
           );
         }
+
         break;
       }
       case "LogicalExpression":
@@ -522,10 +492,7 @@ function pass2MarkDependentTypes(env: TypeEnvironment, program: Program) {
   function recurse(node: AnyNode) {
     for (const child of astNaiveChildren(node)) {
       if (isExpression(child)) {
-        if (onExpression(child)) {
-          // can return true to abort
-          continue;
-        }
+        onExpression(child)
       } else if (isStatement(child)) {
         onStatement(child);
       }
@@ -544,27 +511,24 @@ function pass3PumpDependencies(
   const allDeps = env.getAllTypeDependencies();
   const allDepsInv = env.getAllTypeDependenciesInv();
 
-  for (let pass = 0; pass < 2000000; pass++) {
-    // Sanity checks
-    //invariant(
-    //  [...allDeps].flat().every((dep) => dep.target.type === undefined),
-    //  "every dependency target type is as-of-yet unknown"
-    //);
-    invariant(
-      [...allDeps].every(([_k, depSet]) => depSet.length > 0),
-      "all depSets have at least one dep"
-    );
-    invariant(
-      [...allDeps].every(
-        ([_k, depSet]) =>
-          depSet.length === 0 ||
-          depSet.every((dep) => dep.target === depSet[0].target)
-      ),
-      "each depSet points to the same dep"
-    );
+  // Sanity checks
+  invariant(
+    [...allDeps].every(([_k, depSet]) => depSet.length > 0),
+    "all depSets have at least one dep"
+  );
+  invariant(
+    [...allDeps].every(
+      ([_k, depSet]) =>
+        depSet.length === 0 ||
+        depSet.every((dep) => dep.target === depSet[0].target)
+    ),
+    "each depSet points to the same dep"
+  );
 
+  for (let pass = 0; pass < 2000000; pass++) {
     let anyProgress = false;
 
+    // TODO what's with this iteration? We should think of this as a cyclic directed graph
     for (const [target, depSet] of allDeps) {
       let originalType = PtrType.deref(target.type);
 

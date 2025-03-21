@@ -1,7 +1,7 @@
 import { AnyNode, Program } from "../ast/augmented-ast";
 import { defined, invariant, maparrayPush, mapGetOrDefault } from "../utils";
 import { propagateTypes } from "./propagation";
-import { ObjectType, TypeVariable, UndefinedType } from "./type";
+import { InvalidType, ObjectType, TypeVariable, UndefinedType, UnknownType } from "./type";
 import { TypeDependency } from "./type-dependencies";
 
 const typeEnvs = new WeakMap<Program, TypeEnvironment>();
@@ -39,6 +39,14 @@ export class TypeEnvironment {
   getNodeType(node: AnyNode) {
     return defined(this.#typeVars.get(node)).type;
   }
+  getValidNodeType(node: AnyNode) {
+    const t = this.getNodeType(node)
+    if (t instanceof UnknownType || t instanceof InvalidType) {
+      return null
+    } else {
+      return t
+    }
+  }
   getNodeTypeVar(node: AnyNode) {
     return defined(this.#typeVars.get(node));
   }
@@ -59,6 +67,14 @@ export class TypeEnvironment {
   }
   getBindingType(uniqueName: string) {
     return defined(this.#bindingVars.get(uniqueName)).type;
+  }
+  getValidBindingType(uniqueName: string) {
+    const t = this.getBindingType(uniqueName)
+    if (t instanceof UnknownType || t instanceof InvalidType) {
+      return null
+    } else {
+      return t
+    }
   }
 
   addTypeDependency(dependency: TypeDependency) {

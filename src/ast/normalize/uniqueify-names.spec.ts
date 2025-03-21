@@ -94,4 +94,20 @@ it("takes note of all closures", () => {
       "root.bar.foo (vars: foo@4)",
     ]
   `);
+
+  expect(
+    testClosures(`
+      let foo = function foo() {
+        let foo = 'bar'
+        if (1) {
+          let foo = 'bar'
+        }
+      }
+    `)
+  ).toMatchInlineSnapshot(`
+    [
+      "root (vars: foo@1)",
+      "root.foo (vars: foo@2, foo@3, foo@4)",
+    ]
+  `);
 });

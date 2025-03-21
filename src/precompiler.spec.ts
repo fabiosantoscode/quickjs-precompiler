@@ -20,6 +20,8 @@ import { writeFileSync } from "fs";
  *
  */
 
+jest.setTimeout(30_000) // sometimes there's lots to compile
+
 /** Let's get started. We'll take an input JS file  */
 const inputJs = `{
     let count = 5, n1 = 0, n2 = 1, output = '';

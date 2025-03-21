@@ -20,3 +20,11 @@ Finally, the precomp-AST is output into C source code.
  - Extend your code with C functions
  - Precompile the generated code with TCC
 
+# Hacking
+
+This contains a git submodule vendor/quickjs checked out at a specific commit. You need to compile this in order to use quickjs-precompiler.
+
+```
+cd vendor/quickjs; make; make quickjs.o
+```
+

@@ -49,7 +49,7 @@ type GoInto = {
   expressions: boolean;
   patterns: boolean;
   labels: boolean;
-  super: boolean;
+  //super: boolean;
 };
 type GoThrough = {
   expressions: boolean;
@@ -68,7 +68,7 @@ export const goIntoAll: GoInto = {
   expressions: true,
   patterns: true,
   labels: true,
-  super: true,
+  //super: true,
 };
 export const goIntoStatements: GoInto = {
   classes: false,
@@ -79,7 +79,7 @@ export const goIntoStatements: GoInto = {
   expressions: false,
   patterns: false,
   labels: false,
-  super: false,
+  //super: false,
 };
 export const goThroughAll: GoThrough = {
   expressions: true,
@@ -152,12 +152,12 @@ export function* astRawTraversal(
       }
 
       case "MemberExpression": {
-        if (thing.object.type === "Super") {
-          if (goInto.super) yield thing.object;
-        } else {
+        //if (thing.object.type === "Super") {
+        //  if (goInto.super) yield thing.object;
+        //} else {
           if (goInto.expressions) yield thing.object;
           else if (goThrough.expressions) yield* through(thing.object);
-        }
+        //}
 
         if (thing.computed && thing.property.type !== "PrivateIdentifier") {
           if (goInto.expressions) yield thing.property;
@@ -345,11 +345,11 @@ export function* astRawTraversal(
     case "CallExpression":
     case "NewExpression": {
       if (goInto.expressions) {
-        if (ast.callee.type === "Super") {
-          if (goInto.super) yield ast.callee;
-        } else {
+        //if (ast.callee.type === "Super") {
+        //  if (goInto.super) yield ast.callee;
+        //} else {
           yield ast.callee;
-        }
+        //}
 
         for (const arg of ast.arguments) {
           if (arg.type === "SpreadElement") {
@@ -359,11 +359,11 @@ export function* astRawTraversal(
           }
         }
       } else if (goThrough.expressions) {
-        if (ast.callee.type === "Super") {
-          if (goInto.super) yield ast.callee;
-        } else {
+        //if (ast.callee.type === "Super") {
+        //  if (goInto.super) yield ast.callee;
+        //} else {
           yield* through(ast.callee);
-        }
+        //}
 
         for (const arg of ast.arguments) {
           if (arg.type === "SpreadElement") {
@@ -531,12 +531,16 @@ export function* astRawTraversal(
     }
     case "MemberExpression": {
       if (goInto.expressions) {
-        if (ast.object.type !== "Super") yield ast.object;
+        // if (ast.object.type !== "Super") {
+          yield ast.object;
+        // }
         if (ast.computed && ast.property.type !== "PrivateIdentifier") {
           yield ast.property;
         }
       } else if (goThrough.expressions) {
-        if (ast.object.type !== "Super") yield* through(ast.object);
+        // if (ast.object.type !== "Super") {
+          yield* through(ast.object);
+        // }
         if (ast.computed && ast.property.type !== "PrivateIdentifier") {
           yield* through(ast.property);
         }
@@ -595,7 +599,7 @@ export function* astRawTraversal(
 
     case "DebuggerStatement":
     case "MetaProperty":
-    case "Super":
+    //case "Super":
     case "Literal":
     case "Identifier":
     case "ThisExpression": {
@@ -697,7 +701,7 @@ export function isFunction(item: AnyNode): item is Function {
   );
 }
 
-export function astFindFunctions(root: AnyNode, deep = false) {
+export function astChildFunctions(root: AnyNode, deep = false) {
   const functions: Function[] = [];
 
   (function recurse(node) {

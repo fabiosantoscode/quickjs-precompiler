@@ -89,7 +89,7 @@ nodeToC.AssignmentExpression = expression("AssignmentExpression", {
   canTransform(node, env) {
     return (
       node.left.type === "Identifier" &&
-      env.getBindingTypeVar(node.left.uniqueName) &&
+      env.getValidBindingType(node.left.uniqueName) &&
       (node.operator === "=" ||
         node.operator === "+=" ||
         node.operator === "-=")
@@ -100,7 +100,7 @@ nodeToC.AssignmentExpression = expression("AssignmentExpression", {
     const exp = nodeToC[node.right.type].emit(node.right, env, emitter);
 
     emitter.emitAssignment(
-      defined(env.getNodeType(node)),
+      defined(env.getValidNodeType(node)),
       node.left.uniqueName,
       defined(exp)
     );
@@ -109,8 +109,8 @@ nodeToC.AssignmentExpression = expression("AssignmentExpression", {
 
 nodeToC.BinaryExpression = expression("BinaryExpression", {
   canTransform(node, env, hygienicNames) {
-    const leftT = env.getNodeType(node.left);
-    const rightT = env.getNodeType(node.right);
+    const leftT = env.getValidNodeType(node.left);
+    const rightT = env.getValidNodeType(node.right);
     const bothNumbers =
       leftT instanceof NumberType && rightT instanceof NumberType;
 
@@ -215,7 +215,7 @@ nodeToC.ExpressionStatement = statement("ExpressionStatement", {
 
 nodeToC.IfStatement = statement("IfStatement", {
   canTransform(node, env, hygienicNames) {
-    const type = env.getNodeType(node.test);
+    const type = env.getValidNodeType(node.test);
 
     return (
       (type instanceof NumberType || type instanceof BooleanType) &&
@@ -244,9 +244,6 @@ nodeToC.IfStatement = statement("IfStatement", {
 });
 
 nodeToC.FunctionExpression = declaration("FunctionExpression", {
-  canTransform(node, env) {
-    return env.getNodeType(node) != null;
-  },
   intoCDeclarations(mutNode, env, hygienicNames) {
     const cBindingName = hygienicNames.create(mutNode.id?.name);
     const cBody = mutNode.body;

@@ -27,18 +27,7 @@ export function normalizeVariableDeclarations(ast: Program) {
     return node.declarations.map((declarator) => ({
       ...node,
       type: "VariableDeclaration",
-      declarations: [
-        {
-          ...declarator,
-          init: declarator.init ?? {
-            type: "Identifier",
-            name: "undefined",
-            end: declarator.end,
-            start: declarator.start,
-            loc: declarator.loc,
-          },
-        },
-      ],
+      declarations: [ declarator ],
     }));
   }
 

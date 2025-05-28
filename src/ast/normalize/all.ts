@@ -5,6 +5,7 @@ import { normalizeMarkReferences } from "./mark-references";
 import { normalizeVariableDeclarations } from "./variable-declarations";
 import { normalizeHoistedFunctions } from "./normalize-hoisted-functions";
 import { BindingTracker } from "./binding-tracker";
+import { defineInitializers } from "./define-initializers";
 import { hoistLegacyVar } from "./hoist-var";
 import { normalizeLabels } from "./labels";
 
@@ -24,6 +25,7 @@ export function normalizeAll(program: Program) {
   normalizeArrowFunctions(program);
 
   // Move variables around
+  defineInitializers(program);
   hoistLegacyVar(program);
   normalizeVariableDeclarations(program);
   normalizeHoistedFunctions(program);
